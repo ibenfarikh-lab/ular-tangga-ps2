@@ -48,20 +48,20 @@ int cekUlarTangga(int posisi) {
     return posisi;
 }
 
-// Konversi posisi 1-100 ke koordinat layar (papan 448x448: asal 28, sel 38,9)
+// Konversi posisi 1-100 ke koordinat layar (papan kanvas baru:
+// asal dalam 152,64, rentang 335 untuk 10 petak)
 void get_xy_dari_posisi(int posisi, int *x, int *y) {
     int index = posisi - 1;
     int baris = index / 10;
     int kolom = index % 10;
     if (baris % 2 != 0) kolom = 9 - kolom;
-    *x = 28 + (kolom * 389) / 10;
-    *y = 28 + ((9 - baris) * 389) / 10;
+    *x = 152 + (kolom * 335) / 10;
+    *y = 64 + ((9 - baris) * 335) / 10;
 }
 
-// Dadu visual 64x64 di panel (tengah panel x=544)
+// Titik dadu di atas dadu polos kanvas (kotak 64x64 di 36,200)
 void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
-    int dx = 512, dy = 192;
-    gsKit_prim_sprite(gsGlobal, dx, dy, dx + 64, dy + 64, 2, GS_SETREG_RGBAQ(220, 220, 220, 0x80, 0));
+    int dx = 36, dy = 200;
     if (angka_dadu == 1 || angka_dadu == 3 || angka_dadu == 5)
         gsKit_prim_sprite(gsGlobal, dx+28, dy+28, dx+36, dy+36, 1, color_dot);
     if (angka_dadu >= 2) {
@@ -156,6 +156,8 @@ static const unsigned char HURUF_6[7] = {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E};
 static const unsigned char HURUF_7[7] = {0x1F,0x01,0x02,0x04,0x08,0x08,0x08};
 static const unsigned char HURUF_8[7] = {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E};
 static const unsigned char HURUF_9[7] = {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C};
+static const unsigned char HURUF_D[7] = {0x1C,0x12,0x11,0x11,0x11,0x12,0x1C};
+static const unsigned char HURUF_MINUS[7] = {0x00,0x00,0x00,0x1F,0x00,0x00,0x00};
 
 static const unsigned char *glyph_for(char c) {
     switch (c) {
@@ -174,6 +176,7 @@ static const unsigned char *glyph_for(char c) {
         case '4': return HURUF_4; case '5': return HURUF_5;
         case '6': return HURUF_6; case '7': return HURUF_7;
         case '8': return HURUF_8; case '9': return HURUF_9;
+        case 'D': return HURUF_D; case '-': return HURUF_MINUS;
         default:  return HURUF_SPASI;
     }
 }
@@ -266,12 +269,12 @@ int main(int argc, char *argv[]) {
     int set_sel = 0;
     int pemain_pertama = 1;
 
-    int p1_pos = 1, p2_pos = 1;
+    int p1_pos = 0, p2_pos = 0;
     int giliran = 1;
     int angka_dadu_terakhir = 0;
     int pemenang = 0;
-    char pesan1[24] = "SIAP?";
-    char pesan2[24] = "";
+    char pesan_hasil[40] = "";
+    int hasil_timer = 0;
 
     unsigned int frame_counter = 0;
     int seed_diatur = 0;
@@ -311,13 +314,13 @@ int main(int argc, char *argv[]) {
             if (new_pad & PAD_CROSS) {
                 if (menu_sel == 0) {
                     // Mulai Game: reset & masuk layar game
-                    p1_pos = 1; p2_pos = 1;
+                    p1_pos = 0; p2_pos = 0;
                     giliran = pemain_pertama;
                     angka_dadu_terakhir = 0;
                     pemenang = 0;
-                    strcpy(pesan1, "SIAP?");
-                    pesan2[0] = 0;
-                    pakai_tekstur(gsGlobal, board_pixels, 448, 448);
+                    pesan_hasil[0] = 0;
+                    hasil_timer = 0;
+                    pakai_tekstur(gsGlobal, board_pixels, 640, 448);
                     layar = LAYAR_GAME;
                 } else if (menu_sel == 1) {
                     set_sel = 0;
@@ -350,6 +353,7 @@ int main(int argc, char *argv[]) {
                 layar = LAYAR_JUDUL;
             }
         } else { // LAYAR_GAME
+            if (hasil_timer > 0) hasil_timer--;
             if (new_pad & PAD_START) {
                 pemenang = 0;
                 pakai_tekstur(gsGlobal, judul_pixels, 640, 448);
@@ -361,11 +365,8 @@ int main(int argc, char *argv[]) {
                     layar = LAYAR_JUDUL;
                 }
             } else {
-                int tombol_ditekan = 0;
-                if ((giliran == 1) && (new_pad & PAD_CROSS)) tombol_ditekan = 1;
-                else if ((giliran == 2) && (new_pad & PAD_CIRCLE)) tombol_ditekan = 1;
-
-                if (tombol_ditekan) {
+                // Tombol lempar dadu: X untuk kedua pemain (keputusan user)
+                if (new_pad & PAD_CROSS) {
                     if (!seed_diatur) { srand(frame_counter); seed_diatur = 1; }
                     angka_dadu_terakhir = (rand() % 6) + 1;
                     int *posisi_skg = (giliran == 1) ? &p1_pos : &p2_pos;
@@ -373,21 +374,17 @@ int main(int argc, char *argv[]) {
                     if (tujuan >= 100) {
                         *posisi_skg = 100;
                         pemenang = giliran;
-                        strcpy(pesan1, "MENANG!");
-                        pesan2[0] = 0;
                     } else {
                         int hasil = cekUlarTangga(tujuan);
                         if (hasil > tujuan) {
-                            strcpy(pesan1, "TANGGA!");
-                            sprintf(pesan2, "NAIK %d", hasil);
+                            sprintf(pesan_hasil, "TANGGA! NAIK KE %d", hasil);
                         } else if (hasil < tujuan) {
-                            strcpy(pesan1, "ULAR!");
-                            sprintf(pesan2, "TURUN %d", hasil);
+                            sprintf(pesan_hasil, "ULAR! TURUN KE %d", hasil);
                         } else {
-                            sprintf(pesan1, "%s MAJU %d", (giliran == 1) ? "P1" : "P2", angka_dadu_terakhir);
-                            pesan2[0] = 0;
+                            sprintf(pesan_hasil, "%s MAJU %d", (giliran == 1) ? "P1" : "P2", angka_dadu_terakhir);
                         }
                         *posisi_skg = hasil;
+                        hasil_timer = 100;
                         giliran = (giliran == 1) ? 2 : 1;
                     }
                 }
@@ -421,56 +418,66 @@ int main(int argc, char *argv[]) {
                 : GS_SETREG_RGBAQ(170, 225, 255, 0x00, 0);
             draw_bingkai(gsGlobal, 126, cy - 20, 514, cy + 20, warna_bingkai);
         } else { // LAYAR_GAME
-            if (pemenang != 0) {
-                u64 warna_menang = (pemenang == 1) ? color_p1 : color_p2;
-                u64 flash_bg = (frame_counter % 20 < 10) ? warna_menang : color_navy;
-                gsKit_clear(gsGlobal, flash_bg);
-            } else {
-                gsKit_clear(gsGlobal, color_navy);
-            }
+            gsKit_clear(gsGlobal, color_navy);
             gsKit_prim_sprite_texture(gsGlobal, &texLayar,
                                       0, 0, 0, 0,
-                                      448, 448, 448, 448,
+                                      640, 448, 640, 448,
                                       3, GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x00, 0));
-            gsKit_prim_sprite(gsGlobal, 448, 0, 451, 448, 2, color_gelap);
 
-            int p1_x, p1_y, p2_x, p2_y;
-            get_xy_dari_posisi(p1_pos, &p1_x, &p1_y);
-            get_xy_dari_posisi(p2_pos, &p2_x, &p2_y);
-            if (p1_pos == p2_pos) {
-                draw_bidak(gsGlobal, p1_x + 10, p1_y + 21, 0.63f, color_p1_terang, color_p1, color_p1_gelap);
-                draw_bidak(gsGlobal, p2_x + 28, p2_y + 21, 0.63f, color_p2_terang, color_p2, color_p2_gelap);
-            } else {
-                draw_bidak(gsGlobal, p1_x + 19, p1_y + 19, 0.87f, color_p1_terang, color_p1, color_p1_gelap);
-                draw_bidak(gsGlobal, p2_x + 19, p2_y + 19, 0.87f, color_p2_terang, color_p2, color_p2_gelap);
+            // Penanda giliran: bingkai emas berkedip di lencana pemain aktif
+            if (pemenang == 0 && (frame_counter / 20) % 2 == 0) {
+                u64 emas = GS_SETREG_RGBAQ(255, 205, 80, 0x00, 0);
+                if (giliran == 1) draw_bingkai(gsGlobal, 10, 8, 280, 58, emas);
+                else draw_bingkai(gsGlobal, 360, 8, 630, 58, emas);
             }
 
-            // Panel kanan (448..640): judul, skor, giliran, dadu, petunjuk, banner
-            char skor[16];
-            draw_text(gsGlobal, 521, 12, 2, color_teks, "ULAR");
-            draw_text(gsGlobal, 509, 30, 2, color_teks, "TANGGA");
-            gsKit_prim_sprite(gsGlobal, 464, 56, 480, 72, 2, color_p1);
-            draw_text(gsGlobal, 486, 57, 2, color_teks, "P1");
+            // Nilai posisi di lencana (tengah ruang kosong lencana)
+            char skor[8];
             sprintf(skor, "%d", p1_pos);
-            draw_text(gsGlobal, 624 - ((int)strlen(skor) * 12 - 2), 57, 2, color_p1, skor);
-            gsKit_prim_sprite(gsGlobal, 464, 78, 480, 94, 2, color_p2);
-            draw_text(gsGlobal, 486, 79, 2, color_teks, "P2");
+            draw_text(gsGlobal, 205 - ((int)strlen(skor) * 18 - 3) / 2, 23, 3, color_teks, skor);
             sprintf(skor, "%d", p2_pos);
-            draw_text(gsGlobal, 624 - ((int)strlen(skor) * 12 - 2), 79, 2, color_p2, skor);
-            if (pemenang == 0) {
-                u64 warna_giliran = (giliran == 1) ? color_p1 : color_p2;
-                draw_text(gsGlobal, 503, 108, 2, color_teks, "GILIRAN");
-                gsKit_prim_sprite(gsGlobal, 480, 128, 608, 146, 2, warna_giliran);
-                draw_text(gsGlobal, 528, 156, 3, warna_giliran, (giliran == 1) ? "P1" : "P2");
-                if (angka_dadu_terakhir > 0) draw_dadu(gsGlobal, angka_dadu_terakhir, color_dot);
-                draw_text(gsGlobal, 503, 280, 2, color_teks, (giliran == 1) ? "TEKAN X" : "TEKAN O");
-                if (pesan1[0]) draw_text(gsGlobal, 544 - ((int)strlen(pesan1) * 12 - 2) / 2, 316, 2, color_teks, pesan1);
-                if (pesan2[0]) draw_text(gsGlobal, 544 - ((int)strlen(pesan2) * 12 - 2) / 2, 336, 2, color_teks, pesan2);
+            draw_text(gsGlobal, 435 - ((int)strlen(skor) * 18 - 3) / 2, 23, 3, color_teks, skor);
+
+            // Bidak: hanya bila sudah masuk papan (posisi > 0)
+            if (p1_pos > 0 && p1_pos == p2_pos) {
+                int bx, by;
+                get_xy_dari_posisi(p1_pos, &bx, &by);
+                draw_bidak(gsGlobal, bx + 10, by + 17, 0.55f, color_p1_terang, color_p1, color_p1_gelap);
+                draw_bidak(gsGlobal, bx + 24, by + 17, 0.55f, color_p2_terang, color_p2, color_p2_gelap);
             } else {
-                u64 warna_menang_teks = (pemenang == 1) ? color_p1 : color_p2;
-                draw_text(gsGlobal, 528, 156, 3, warna_menang_teks, (pemenang == 1) ? "P1" : "P2");
-                draw_text(gsGlobal, 503, 210, 2, color_teks, "MENANG!");
-                draw_text(gsGlobal, 503, 280, 2, color_teks, "TEKAN X");
+                if (p1_pos > 0) {
+                    int bx, by;
+                    get_xy_dari_posisi(p1_pos, &bx, &by);
+                    draw_bidak(gsGlobal, bx + 17, by + 17, 0.72f, color_p1_terang, color_p1, color_p1_gelap);
+                }
+                if (p2_pos > 0) {
+                    int bx, by;
+                    get_xy_dari_posisi(p2_pos, &bx, &by);
+                    draw_bidak(gsGlobal, bx + 17, by + 17, 0.72f, color_p2_terang, color_p2, color_p2_gelap);
+                }
+            }
+
+            // Titik dadu di atas dadu polos kanvas
+            if (angka_dadu_terakhir > 0) draw_dadu(gsGlobal, angka_dadu_terakhir, color_dot);
+
+            // Banner bawah: menang / hasil lemparan / giliran
+            if (pemenang != 0) {
+                char wt[24];
+                sprintf(wt, "PEMAIN %d MENANG!", pemenang);
+                draw_text(gsGlobal, 320 - ((int)strlen(wt) * 12 - 2) / 2, 409, 2, color_kuning, wt);
+            } else if (hasil_timer > 0) {
+                draw_text(gsGlobal, 320 - ((int)strlen(pesan_hasil) * 12 - 2) / 2, 409, 2, color_teks, pesan_hasil);
+            } else {
+                char kiri[32];
+                sprintf(kiri, "GILIRAN PEMAIN %d - TEKAN ", giliran);
+                const char *kanan = " UNTUK MELEMPAR DADU";
+                int wk = (int)strlen(kiri) * 12 - 2;
+                int wn = (int)strlen(kanan) * 12 - 2;
+                int sx = 320 - (wk + 26 + wn) / 2;
+                draw_text(gsGlobal, sx, 409, 2, color_teks, kiri);
+                draw_elips(gsGlobal, sx + wk + 13, 416, 11, 11, 2, GS_SETREG_RGBAQ(47, 127, 224, 0x00, 0));
+                draw_text(gsGlobal, sx + wk + 8, 409, 2, color_teks, "X");
+                draw_text(gsGlobal, sx + wk + 26, 409, 2, color_teks, kanan);
             }
         }
 
