@@ -1,0 +1,23 @@
+name: Build PS2 Game Slim
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ps2dev/ps2dev:latest 
+    
+    steps:
+    - name: Ambil kode
+      uses: actions/checkout@v3
+
+    - name: Compile game
+      run: make
+
+    - name: Upload file ELF
+      uses: actions/upload-artifact@v3
+      with:
+        name: Game-Ular-Tangga-PS2-Slim
+        path: ulartangga_slim.elf
