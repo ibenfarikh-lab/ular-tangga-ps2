@@ -11,13 +11,13 @@ jobs:
     
     steps:
     - name: Ambil kode
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Compile game
       run: make
 
     - name: Upload file ELF
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Game-Ular-Tangga-PS2-Slim
         path: ulartangga_slim.elf
