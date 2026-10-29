@@ -9,17 +9,24 @@
 
 static char padBuf[256] __attribute__((aligned(64)));
 
-// 16 Entri Ular Tangga
+// 16 Entri Ular Tangga (Sudah dirapikan strukturnya agar compiler tidak protes)
 int cekUlarTangga(int posisi) {
-    if (posisi == 4) return 14;   if (posisi == 9) return 31;
-    if (posisi == 20) return 38;  if (posisi == 28) return 84;
-    if (posisi == 40) return 59;  if (posisi == 51) return 67;
-    if (posisi == 63) return 81;  if (posisi == 71) return 91;
-    
-    if (posisi == 17) return 7;   if (posisi == 54) return 34;
-    if (posisi == 62) return 19;  if (posisi == 64) return 60;
-    if (posisi == 87) return 24;  if (posisi == 93) return 73;
-    if (posisi == 95) return 75;  if (posisi == 99) return 78;
+    if (posisi == 4)  return 14;   
+    if (posisi == 9)  return 31;
+    if (posisi == 20) return 38;  
+    if (posisi == 28) return 84;
+    if (posisi == 40) return 59;  
+    if (posisi == 51) return 67;
+    if (posisi == 63) return 81;  
+    if (posisi == 71) return 91;
+    if (posisi == 17) return 7;   
+    if (posisi == 54) return 34;
+    if (posisi == 62) return 19;  
+    if (posisi == 64) return 60;
+    if (posisi == 87) return 24;  
+    if (posisi == 93) return 73;
+    if (posisi == 95) return 75;  
+    if (posisi == 99) return 78;
     return posisi;
 }
 
@@ -55,8 +62,9 @@ void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
 }
 
 int main(int argc, char *argv[]) {
-    // 1. Inisialisasi RPC Paling Sederhana (Standar Homebrew PS2 Modern)
+    // 1. Inisialisasi RPC Paling Sederhana
     SifInitRpc(0);
+    SifLoadFileInit();
     
     // Kirim log awal untuk memastikan program mulai dieksekusi oleh EE
     printf("[LOG ULAR TANGGA]: Program EE berhasil dipicu.\n");
@@ -64,8 +72,8 @@ int main(int argc, char *argv[]) {
     // 2. Alokasikan struktur dasar gsKit Global
     GSGLOBAL *gsGlobal = gsKit_init_global();
     
-    // PERBAIKAN UTAMA: Deteksi otomatis mode video (PAL/NTSC) dari BIOS secara dinamis
-    gsGlobal->Mode = gsKit_check_device();
+    // PERBAIKAN UTAMA: Menggunakan gsKit_check_rom() yang valid di SDK
+    gsGlobal->Mode = gsKit_check_rom();
     
     // Atur resolusi adaptif berdasarkan mode yang terdeteksi
     if (gsGlobal->Mode == GS_MODE_PAL) {
@@ -91,7 +99,7 @@ int main(int argc, char *argv[]) {
     gsKit_vram_clear(gsGlobal); 
     printf("[LOG ULAR TANGGA]: gsKit Screen Berhasil Menyala.\n");
 
-    // 4. Pemuatan Modul Input Stik PS2 dilakukan paling akhir
+    // 4. Pemuatan Modul Input Stik PS2
     SifLoadModule("rom0:XSIO2MAN", 0, NULL);
     SifLoadModule("rom0:XPADMAN", 0, NULL);
     padInit(0);
@@ -109,7 +117,7 @@ int main(int argc, char *argv[]) {
     unsigned int frame_counter = 0;
     int seed_diatur = 0;
 
-    // Background diset Hijau Terang untuk uji coba visual
+    // Background diset Hijau Terang untuk uji coba visual awal
     u64 color_bg = GS_SETREG_RGBAQ(0, 255, 0, 0x00, 0);
     u64 color_petak1 = GS_SETREG_RGBAQ(60, 100, 160, 0x00, 0);
     u64 color_petak2 = GS_SETREG_RGBAQ(40, 70, 120, 0x00, 0);
