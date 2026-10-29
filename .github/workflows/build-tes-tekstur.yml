@@ -1,0 +1,29 @@
+name: Build Tes Tekstur
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - "tes-tekstur/**"
+      - ".github/workflows/build-tes-tekstur.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ps2dev/ps2dev:latest
+
+    steps:
+    - name: Ambil kode
+      uses: actions/checkout@v4
+
+    - name: Compile tes tekstur
+      run: |
+        $PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc -D_EE -O2 -G0 -Wall -I$PS2SDK/ee/include -I$PS2SDK/common/include -I$GSKIT/include -c tes-tekstur/main.c -o tes-tekstur/main.o
+        $PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc -L$PS2SDK/ee/lib -L$GSKIT/lib -o TESTEKSTUR2.ELF tes-tekstur/main.o -lgskit -ldmakit -lpad -lkernel -lc -lm
+
+    - name: Upload file ELF
+      uses: actions/upload-artifact@v4
+      with:
+        name: Tes-Tekstur-PS2
+        path: TESTEKSTUR2.ELF
