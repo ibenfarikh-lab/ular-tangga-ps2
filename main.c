@@ -55,31 +55,43 @@ void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
 }
 
 int main(int argc, char *argv[]) {
-    // 1. Inisialisasi Kernel PS2 Dasar (Hapus SifIopReset yang bikin blank/freeze)
+    // 1. Inisialisasi RPC Paling Sederhana (Standar Homebrew PS2 Modern)
     SifInitRpc(0);
-    SifLoadFileInit();
+    
+    // Kirim log awal untuk memastikan program mulai dieksekusi oleh EE
+    printf("[LOG ULAR TANGGA]: Program EE berhasil dipicu.\n");
 
-    // 2. Inisialisasi Jalur DMA Grafis WAJIB Paling Awal sebelum gsKit
-    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
-    dmaKit_chan_init(DMA_CHANNEL_GIF);
-
-    // 3. Inisialisasi Grafis GS Global & Layar Utama
+    // 2. Alokasikan struktur dasar gsKit Global
     GSGLOBAL *gsGlobal = gsKit_init_global();
-    gsGlobal->Mode = GS_MODE_NTSC;
-    gsGlobal->Height = 448;
+    
+    // PERBAIKAN UTAMA: Deteksi otomatis mode video (PAL/NTSC) dari BIOS secara dinamis
+    gsGlobal->Mode = gsKit_check_device();
+    
+    // Atur resolusi adaptif berdasarkan mode yang terdeteksi
+    if (gsGlobal->Mode == GS_MODE_PAL) {
+        gsGlobal->Height = 512;
+    } else {
+        gsGlobal->Height = 448;
+    }
     gsGlobal->Width = 640;
     gsGlobal->Interlace = GS_INTERLACED; 
     gsGlobal->Field = GS_FIELD;          
     gsGlobal->ZBuffering = GS_SETTING_OFF;     
-    gsGlobal->PrimAlphaEnable = GS_SETTING_ON; 
+    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF; 
     gsGlobal->PSM = GS_PSM_CT32;
     gsGlobal->PSMZ = GS_PSMZ_16S;
     
+    // 3. Hidupkan Jalur Kerja DMA Grafis (GIF)
+    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
+    dmaKit_chan_init(DMA_CHANNEL_GIF);
+
+    // Hidupkan Output Layar
     gsKit_init_screen(gsGlobal);
     gsKit_mode_switch(gsGlobal, GS_PERSISTENT);
     gsKit_vram_clear(gsGlobal); 
+    printf("[LOG ULAR TANGGA]: gsKit Screen Berhasil Menyala.\n");
 
-    // 4. Pemuatan Modul Input Stik PS2
+    // 4. Pemuatan Modul Input Stik PS2 dilakukan paling akhir
     SifLoadModule("rom0:XSIO2MAN", 0, NULL);
     SifLoadModule("rom0:XPADMAN", 0, NULL);
     padInit(0);
@@ -97,21 +109,23 @@ int main(int argc, char *argv[]) {
     unsigned int frame_counter = 0;
     int seed_diatur = 0;
 
-    // BUKTI VISUAL: Mengubah background menjadi Hijau Terang untuk memastikan layar menyala
-    u64 color_bg = GS_SETREG_RGBAQ(0, 255, 0, 0x80, 0);
-    u64 color_petak1 = GS_SETREG_RGBAQ(60, 100, 160, 0x80, 0);
-    u64 color_petak2 = GS_SETREG_RGBAQ(40, 70, 120, 0x80, 0);
-    u64 color_p1 = GS_SETREG_RGBAQ(255, 50, 50, 0x80, 0);   
-    u64 color_p2 = GS_SETREG_RGBAQ(50, 200, 255, 0x80, 0);  
-    u64 color_dot = GS_SETREG_RGBAQ(10, 10, 10, 0x80, 0);   
-    u64 color_awal = GS_SETREG_RGBAQ(100, 255, 100, 0x80, 0); 
-    u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x80, 0); 
+    // Background diset Hijau Terang untuk uji coba visual
+    u64 color_bg = GS_SETREG_RGBAQ(0, 255, 0, 0x00, 0);
+    u64 color_petak1 = GS_SETREG_RGBAQ(60, 100, 160, 0x00, 0);
+    u64 color_petak2 = GS_SETREG_RGBAQ(40, 70, 120, 0x00, 0);
+    u64 color_p1 = GS_SETREG_RGBAQ(255, 50, 50, 0x00, 0);   
+    u64 color_p2 = GS_SETREG_RGBAQ(50, 200, 255, 0x00, 0);  
+    u64 color_dot = GS_SETREG_RGBAQ(10, 10, 10, 0x00, 0);   
+    u64 color_awal = GS_SETREG_RGBAQ(100, 255, 100, 0x00, 0); 
+    u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x00, 0); 
+
+    printf("[LOG ULAR TANGGA]: Memasuki putaran game loop utama.\n");
 
     // Main Game Loop
     while (1) {
         frame_counter++;
         
-        // Ambil Input Stik secara aman (Hanya saat port mengembalikan status 6 = READY)
+        // Baca Input Stik jika status port siap (State 6 = Ready)
         if (pemenang == 0 && (padGetState(0, 0) == 6)) {
             int ret = padRead(0, 0, &buttons);
             if (ret != 0) {
