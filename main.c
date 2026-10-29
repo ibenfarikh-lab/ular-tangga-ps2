@@ -63,17 +63,13 @@ int main(int argc, char *argv[]) {
     SifInitRpc(0);
     SifLoadFileInit();
 
-    // 2. Load Modul Stik (Hanya Slim, Jangan pakai versi FAT)
+    // 2. Load Modul Stik
     SifLoadModule("rom0:XSIO2MAN", 0, NULL);
     SifLoadModule("rom0:XPADMAN", 0, NULL);
     padInit(0);
     padPortOpen(0, 0, padBuf);
 
-    // 3. Init DMA (Wajib Berada Sebelum gsKit_init)
-    dmaKit_init(D_CTRL_RELE_OFF, DMA_CHANNEL_GIF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << 0 );
-    dmaKit_chan_init(DMA_CHANNEL_GIF);
-
-    // 4. Init GS Global & Pengaturan Mode Layar (NTSC)
+    // 3. Init GS Global Dahulu (Standar gskit terbaru)
     GSGLOBAL *gsGlobal = gsKit_init_global();
     gsGlobal->Mode = GS_MODE_NTSC;
     gsGlobal->Height = 448;
@@ -85,7 +81,11 @@ int main(int argc, char *argv[]) {
     gsGlobal->PSM = GS_PSM_CT32;
     gsGlobal->PSMZ = GS_PSMZ_16S;
     
-    // Aktifkan VRAM & Output Layar
+    // 4. Perbaikan Parameter DMA: Disesuaikan dengan API resmi ps2sdk
+    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
+    dmaKit_chan_init(DMA_CHANNEL_GIF);
+
+    // Aktifkan Output Layar
     gsKit_init_screen(gsGlobal);
     gsKit_mode_switch(gsGlobal, GS_ONESHOT);
     gsKit_vram_clear(gsGlobal); 
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
     u64 color_awal = GS_SETREG_RGBAQ(100, 255, 100, 0x80, 0); 
     u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x80, 0); 
 
-    // Sinkronisasi/tunggu port stik mendeteksi hardware
+    // Sinkronisasi status port stik sebelum memulai game loop
     int state;
     while((state = padGetState(0, 0)) != PAD_STATE_READY && state != PAD_STATE_CHECKPAD);
 
