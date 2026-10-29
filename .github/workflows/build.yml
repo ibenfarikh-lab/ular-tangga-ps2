@@ -13,11 +13,10 @@ jobs:
     - name: Ambil kode
       uses: actions/checkout@v4
 
-    - name: Pasang make
-      run: apt-get update && apt-get install -y make
-
     - name: Compile game
-      run: make
+      run: |
+        $PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc -D_EE -O2 -G0 -Wall -I$PS2SDK/ee/include -I$PS2SDK/common/include -I$PS2SDK/ports/include -c main.c -o main.o
+        $PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc -L$PS2SDK/ee/lib -L$PS2SDK/ports/lib -o ulartangga_slim.elf main.o -lgskit -ldmakit -lpad -lkernel -lc -lm
 
     - name: Upload file ELF
       uses: actions/upload-artifact@v4
