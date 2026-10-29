@@ -7,6 +7,7 @@
 #include <gsKit.h>
 #include <dmaKit.h>
 #include <math.h>
+#include <string.h>
 
 #include "board_data.h"
 
@@ -45,7 +46,7 @@ void get_xy_dari_posisi(int posisi, int *x, int *y) {
 
 // Fungsi menggambar dadu visual
 void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
-    int dx = 536, dy = 148; 
+    int dx = 536, dy = 196; 
     gsKit_prim_sprite(gsGlobal, dx, dy, dx + 80, dy + 80, 2, GS_SETREG_RGBAQ(220, 220, 220, 0x80, 0));
 
     if (angka_dadu == 1 || angka_dadu == 3 || angka_dadu == 5)
@@ -65,28 +66,44 @@ void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
 }
 
 
-// Menggambar lingkaran penuh memakai triangle fan gsKit
-void draw_circle(GSGLOBAL *gsGlobal, float cx, float cy, float r, int z, u64 color) {
+// Menggambar elips penuh memakai triangle fan gsKit
+void draw_elips(GSGLOBAL *gsGlobal, float cx, float cy, float rx, float ry, int z, u64 color) {
     float fan[2 * 26];
     fan[0] = cx; fan[1] = cy;
     for (int i = 0; i <= 24; i++) {
         float a = 6.2831853f * (float)i / 24.0f;
-        fan[2 + 2*i] = cx + r * cosf(a);
-        fan[3 + 2*i] = cy + r * sinf(a);
+        fan[2 + 2*i] = cx + rx * cosf(a);
+        fan[3 + 2*i] = cy + ry * sinf(a);
     }
     gsKit_prim_triangle_fan(gsGlobal, fan, 26, z, color);
 }
 
-// Bidak bentuk pion: alas + badan + kepala ber-ring gelap + kilau putih
-void draw_bidak(GSGLOBAL *gsGlobal, float cx, float cy, float s, u64 warna) {
+// Elips gradasi (gouraud): tengah terang -> tepi gelap, kesan glossy membulat
+void draw_grad(GSGLOBAL *gsGlobal, float cx, float cy, float rx, float ry, int z, u64 cTengah, u64 cTepi) {
+    for (int i = 0; i < 20; i++) {
+        float a1 = 6.2831853f * (float)i / 20.0f;
+        float a2 = 6.2831853f * (float)(i + 1) / 20.0f;
+        gsKit_prim_triangle_gouraud_3d(gsGlobal,
+            cx, cy, z,
+            cx + rx * cosf(a1), cy + ry * sinf(a1), z,
+            cx + rx * cosf(a2), cy + ry * sinf(a2), z,
+            cTengah, cTepi, cTepi);
+    }
+}
+
+// Bidak pion glossy: bayangan + alas + badan + kepala gradasi gouraud ber-ring gelap
+void draw_bidak(GSGLOBAL *gsGlobal, float cx, float cy, float s, u64 cTerang, u64 cDasar, u64 cGelap) {
     u64 gelap = GS_SETREG_RGBAQ(40, 26, 18, 0x00, 0);
     u64 putih = GS_SETREG_RGBAQ(255, 255, 255, 0x00, 0);
-    draw_circle(gsGlobal, cx, cy + 11.0f*s, 12.0f*s, 1, gelap);
-    draw_circle(gsGlobal, cx, cy + 3.0f*s, 10.0f*s, 1, gelap);
-    draw_circle(gsGlobal, cx, cy + 3.0f*s, 8.5f*s, 1, warna);
-    draw_circle(gsGlobal, cx, cy - 8.0f*s, 7.0f*s, 1, gelap);
-    draw_circle(gsGlobal, cx, cy - 8.0f*s, 5.5f*s, 1, warna);
-    draw_circle(gsGlobal, cx - 2.0f*s, cy - 10.0f*s, 1.8f*s, 1, putih);
+    u64 bayang = GS_SETREG_RGBAQ(58, 46, 28, 0x00, 0);
+    draw_elips(gsGlobal, cx + 2.0f*s, cy + 13.0f*s, 12.0f*s, 4.5f*s, 1, bayang);
+    draw_elips(gsGlobal, cx, cy + 10.0f*s, 12.5f*s, 6.0f*s, 1, gelap);
+    draw_grad(gsGlobal, cx, cy + 10.0f*s, 11.0f*s, 5.2f*s, 1, cTerang, cGelap);
+    draw_elips(gsGlobal, cx, cy + 3.0f*s, 10.0f*s, 10.0f*s, 1, gelap);
+    draw_grad(gsGlobal, cx, cy + 3.0f*s, 8.8f*s, 8.8f*s, 1, cTerang, cDasar);
+    draw_elips(gsGlobal, cx, cy - 8.0f*s, 7.0f*s, 7.0f*s, 1, gelap);
+    draw_grad(gsGlobal, cx, cy - 8.0f*s, 5.8f*s, 5.8f*s, 1, cTerang, cDasar);
+    draw_elips(gsGlobal, cx - 2.0f*s, cy - 10.0f*s, 1.8f*s, 1.8f*s, 1, putih);
 }
 
 // Huruf bitmap 5x7 (bit 4..0 = kiri..kanan)
@@ -108,6 +125,17 @@ static const unsigned char HURUF_X[7] = {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11};
 static const unsigned char HURUF_1[7] = {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E};
 static const unsigned char HURUF_2[7] = {0x0E,0x11,0x01,0x06,0x08,0x10,0x1F};
 static const unsigned char HURUF_TANDA[7] = {0x04,0x04,0x04,0x04,0x04,0x00,0x04};
+static const unsigned char HURUF_J[7] = {0x07,0x02,0x02,0x02,0x02,0x12,0x0C};
+static const unsigned char HURUF_S[7] = {0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E};
+static const unsigned char HURUF_TANYA[7] = {0x0E,0x11,0x01,0x06,0x04,0x00,0x04};
+static const unsigned char HURUF_0[7] = {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E};
+static const unsigned char HURUF_3[7] = {0x0E,0x11,0x01,0x06,0x01,0x11,0x0E};
+static const unsigned char HURUF_4[7] = {0x06,0x0A,0x12,0x1F,0x02,0x02,0x02};
+static const unsigned char HURUF_5[7] = {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E};
+static const unsigned char HURUF_6[7] = {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E};
+static const unsigned char HURUF_7[7] = {0x1F,0x01,0x02,0x04,0x08,0x08,0x08};
+static const unsigned char HURUF_8[7] = {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E};
+static const unsigned char HURUF_9[7] = {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C};
 
 static const unsigned char *glyph_for(char c) {
     switch (c) {
@@ -120,6 +148,12 @@ static const unsigned char *glyph_for(char c) {
         case 'U': return HURUF_U; case 'X': return HURUF_X;
         case '1': return HURUF_1; case '2': return HURUF_2;
         case '!': return HURUF_TANDA;
+        case 'J': return HURUF_J; case 'S': return HURUF_S;
+        case '?': return HURUF_TANYA;
+        case '0': return HURUF_0; case '3': return HURUF_3;
+        case '4': return HURUF_4; case '5': return HURUF_5;
+        case '6': return HURUF_6; case '7': return HURUF_7;
+        case '8': return HURUF_8; case '9': return HURUF_9;
         default:  return HURUF_SPASI;
     }
 }
@@ -214,7 +248,9 @@ int main(int argc, char *argv[]) {
     int p1_pos = 1, p2_pos = 1;
     int giliran = 1; 
     int angka_dadu_terakhir = 0;
-    int pemenang = 0; 
+    int pemenang = 0;
+    char pesan1[24] = "SIAP?";
+    char pesan2[24] = "";
     
     unsigned int frame_counter = 0;
     int seed_diatur = 0;
@@ -223,7 +259,11 @@ int main(int argc, char *argv[]) {
     u64 color_bg = GS_SETREG_RGBAQ(52, 131, 70, 0x00, 0);
     u64 color_p1 = GS_SETREG_RGBAQ(255, 50, 50, 0x00, 0);   
     u64 color_p2 = GS_SETREG_RGBAQ(50, 200, 255, 0x00, 0);  
-    u64 color_dot = GS_SETREG_RGBAQ(10, 10, 10, 0x00, 0);   
+    u64 color_dot = GS_SETREG_RGBAQ(10, 10, 10, 0x00, 0);
+    u64 color_p1_terang = GS_SETREG_RGBAQ(255, 130, 110, 0x00, 0);
+    u64 color_p1_gelap = GS_SETREG_RGBAQ(170, 26, 22, 0x00, 0);
+    u64 color_p2_terang = GS_SETREG_RGBAQ(140, 210, 255, 0x00, 0);
+    u64 color_p2_gelap = GS_SETREG_RGBAQ(24, 88, 180, 0x00, 0);   
 
     printf("[LOG ULAR TANGGA]: Memasuki putaran game loop utama.\n");
 
@@ -249,14 +289,26 @@ int main(int argc, char *argv[]) {
                     angka_dadu_terakhir = (rand() % 6) + 1;
                     int *posisi_skg = (giliran == 1) ? &p1_pos : &p2_pos;
                     
-                    *posisi_skg += angka_dadu_terakhir;
-                    
-                    if (*posisi_skg >= 100) {
+                    int tujuan = *posisi_skg + angka_dadu_terakhir;
+                    if (tujuan >= 100) {
                         *posisi_skg = 100;
                         pemenang = giliran;
+                        strcpy(pesan1, "MENANG!");
+                        pesan2[0] = 0;
                     } else {
-                        *posisi_skg = cekUlarTangga(*posisi_skg);
-                        giliran = (giliran == 1) ? 2 : 1; 
+                        int hasil = cekUlarTangga(tujuan);
+                        if (hasil > tujuan) {
+                            strcpy(pesan1, "TANGGA!");
+                            sprintf(pesan2, "NAIK %d", hasil);
+                        } else if (hasil < tujuan) {
+                            strcpy(pesan1, "ULAR!");
+                            sprintf(pesan2, "TURUN %d", hasil);
+                        } else {
+                            sprintf(pesan1, "%s MAJU %d", (giliran == 1) ? "P1" : "P2", angka_dadu_terakhir);
+                            pesan2[0] = 0;
+                        }
+                        *posisi_skg = hasil;
+                        giliran = (giliran == 1) ? 2 : 1;
                     }
                 }
             }
@@ -286,29 +338,40 @@ int main(int argc, char *argv[]) {
         get_xy_dari_posisi(p2_pos, &p2_x, &p2_y);
 
         if (p1_pos == p2_pos) {
-            draw_bidak(gsGlobal, p1_x + 13, p1_y + 24, 0.72f, color_p1);
-            draw_bidak(gsGlobal, p2_x + 31, p2_y + 24, 0.72f, color_p2);
+            draw_bidak(gsGlobal, p1_x + 13, p1_y + 24, 0.72f, color_p1_terang, color_p1, color_p1_gelap);
+            draw_bidak(gsGlobal, p2_x + 31, p2_y + 24, 0.72f, color_p2_terang, color_p2, color_p2_gelap);
         } else {
-            draw_bidak(gsGlobal, p1_x + 22, p1_y + 22, 1.0f, color_p1);
-            draw_bidak(gsGlobal, p2_x + 22, p2_y + 22, 1.0f, color_p2);
+            draw_bidak(gsGlobal, p1_x + 22, p1_y + 22, 1.0f, color_p1_terang, color_p1, color_p1_gelap);
+            draw_bidak(gsGlobal, p2_x + 22, p2_y + 22, 1.0f, color_p2_terang, color_p2, color_p2_gelap);
         }
 
-        // Gambar Panel Keterangan di strip kanan (judul, giliran, dadu, petunjuk)
+        // Gambar Panel Keterangan di strip kanan (judul, skor, giliran, dadu, petunjuk, banner)
         {
             u64 color_teks = GS_SETREG_RGBAQ(255, 240, 200, 0x00, 0);
+            char skor[16];
             draw_text(gsGlobal, 553, 10, 2, color_teks, "ULAR");
             draw_text(gsGlobal, 541, 28, 2, color_teks, "TANGGA");
+            gsKit_prim_sprite(gsGlobal, 518, 50, 534, 66, 2, color_p1);
+            draw_text(gsGlobal, 540, 51, 2, color_teks, "P1");
+            sprintf(skor, "%d", p1_pos);
+            draw_text(gsGlobal, 634 - ((int)strlen(skor) * 12 - 2), 51, 2, color_p1, skor);
+            gsKit_prim_sprite(gsGlobal, 518, 72, 534, 88, 2, color_p2);
+            draw_text(gsGlobal, 540, 73, 2, color_teks, "P2");
+            sprintf(skor, "%d", p2_pos);
+            draw_text(gsGlobal, 634 - ((int)strlen(skor) * 12 - 2), 73, 2, color_p2, skor);
             if (pemenang == 0) {
                 u64 warna_giliran = (giliran == 1) ? color_p1 : color_p2;
-                draw_text(gsGlobal, 535, 54, 2, color_teks, "GILIRAN");
-                gsKit_prim_sprite(gsGlobal, 536, 76, 616, 96, 2, warna_giliran);
-                draw_text(gsGlobal, 559, 104, 3, warna_giliran, (giliran == 1) ? "P1" : "P2");
+                draw_text(gsGlobal, 535, 100, 2, color_teks, "GILIRAN");
+                gsKit_prim_sprite(gsGlobal, 536, 122, 616, 142, 2, warna_giliran);
+                draw_text(gsGlobal, 559, 150, 3, warna_giliran, (giliran == 1) ? "P1" : "P2");
                 if (angka_dadu_terakhir > 0) draw_dadu(gsGlobal, angka_dadu_terakhir, color_dot);
-                draw_text(gsGlobal, 535, 242, 2, color_teks, (giliran == 1) ? "TEKAN X" : "TEKAN O");
+                draw_text(gsGlobal, 535, 288, 2, color_teks, (giliran == 1) ? "TEKAN X" : "TEKAN O");
+                if (pesan1[0]) draw_text(gsGlobal, 576 - ((int)strlen(pesan1) * 12 - 2) / 2, 330, 2, color_teks, pesan1);
+                if (pesan2[0]) draw_text(gsGlobal, 576 - ((int)strlen(pesan2) * 12 - 2) / 2, 350, 2, color_teks, pesan2);
             } else {
                 u64 warna_menang_teks = (pemenang == 1) ? color_p1 : color_p2;
-                draw_text(gsGlobal, 559, 104, 3, warna_menang_teks, (pemenang == 1) ? "P1" : "P2");
-                draw_text(gsGlobal, 535, 140, 2, color_teks, "MENANG!");
+                draw_text(gsGlobal, 559, 150, 3, warna_menang_teks, (pemenang == 1) ? "P1" : "P2");
+                draw_text(gsGlobal, 535, 196, 2, color_teks, "MENANG!");
             }
         }
 
