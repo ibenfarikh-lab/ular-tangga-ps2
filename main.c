@@ -56,20 +56,14 @@ void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
 }
 
 int main(int argc, char *argv[]) {
-    // 1. Reset IOP (Mutlak untuk Slim SCPH-90006)
+    // 1. Reset IOP & Sinkronisasi Hardware Awal
     SifInitRpc(0);
     while(!SifIopReset("", 0)){};
     while(!SifIopSync()){};
     SifInitRpc(0);
     SifLoadFileInit();
 
-    // 2. Load Modul Stik
-    SifLoadModule("rom0:XSIO2MAN", 0, NULL);
-    SifLoadModule("rom0:XPADMAN", 0, NULL);
-    padInit(0);
-    padPortOpen(0, 0, padBuf);
-
-    // 3. Init GS Global Dahulu (Alokasi memori dasar gskit)
+    // 2. TATA URUTAN GS BARU: Alokasikan, Konfigurasi Atribut Layar, dan Hidupkan Screen secara Berurutan
     GSGLOBAL *gsGlobal = gsKit_init_global();
     gsGlobal->Mode = GS_MODE_NTSC;
     gsGlobal->Height = 448;
@@ -81,14 +75,22 @@ int main(int argc, char *argv[]) {
     gsGlobal->PSM = GS_PSM_CT32;
     gsGlobal->PSMZ = GS_PSMZ_16S;
     
-    // 4. Inisialisasi DMA Berdasarkan Standar gsKit (Mencegah Blank Screen)
+    // Hidupkan Layar terlebih dahulu agar VRAM siap ditempati
+    gsKit_init_screen(gsGlobal);
+    
+    // Inisialisasi Jalur DMA Khusus Grafis (GIF) setelah layar hidup
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
     dmaKit_chan_init(DMA_CHANNEL_GIF);
 
-    // Aktifkan Output Layar Utama
-    gsKit_init_screen(gsGlobal);
-    gsKit_mode_switch(gsGlobal, GS_ONESHOT);
+    // Atur mode persistent rendering agar data sprite menetap di VRAM
+    gsKit_mode_switch(gsGlobal, GS_PERSISTENT);
     gsKit_vram_clear(gsGlobal); 
+
+    // 3. Pemuatan Modul Stik Dilakukan setelah Rangkaian Grafis Selesai Diatur
+    SifLoadModule("rom0:XSIO2MAN", 0, NULL);
+    SifLoadModule("rom0:XPADMAN", 0, NULL);
+    padInit(0);
+    padPortOpen(0, 0, padBuf);
 
     // Variabel Game
     struct padButtonStatus buttons;
@@ -112,15 +114,14 @@ int main(int argc, char *argv[]) {
     u64 color_awal = GS_SETREG_RGBAQ(100, 255, 100, 0x80, 0); 
     u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x80, 0); 
 
-    // PERBAIKAN: Menggunakan nilai integer mentah untuk mengecek kesiapan stik
-    int state;
-    while((state = padGetState(0, 0)) != 6 && state != 2 && state != 1);
+    // Bersihkan layar pertama kali untuk memicu deteksi hardware PCSX2
+    gsKit_clear(gsGlobal, color_bg);
 
     // Main Game Loop
     while (1) {
         frame_counter++;
         
-        // Baca Input dengan pengaman status port stik (State 6 = Ready)
+        // Baca Input jika stik terdeteksi siap (State 6 = Ready)
         if (pemenang == 0 && (padGetState(0, 0) == 6)) {
             int ret = padRead(0, 0, &buttons);
             if (ret != 0) {
@@ -151,10 +152,10 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Tunggu refresh layar TV (V-Sync)
+        // Tunggu sinyal sinkronisasi TV Vertikal (V-Sync)
         gsKit_vsync_wait();
 
-        // Render Frame Efek Menang / Background biasa
+        // Render Background game
         if (pemenang != 0) {
             u64 warna_menang = (pemenang == 1) ? color_p1 : color_p2;
             u64 flash_bg = (frame_counter % 20 < 10) ? warna_menang : color_bg;
@@ -163,7 +164,7 @@ int main(int argc, char *argv[]) {
             gsKit_clear(gsGlobal, color_bg);
         }
 
-        // Gambar 100 Petak Papan Permainan
+        // Menggambar Papan Grid Ular Tangga (10x10)
         for (int i = 1; i <= 100; i++) {
             int px, py;
             get_xy_dari_posisi(i, &px, &py);
@@ -173,12 +174,11 @@ int main(int argc, char *argv[]) {
             gsKit_prim_sprite(gsGlobal, px, py, px + 38, py + 38, 2, warna_petak);
         }
 
-        // Hitung koordinat pion Player 1 & Player 2
+        // Gambar Pion Pemain
         int p1_x, p1_y, p2_x, p2_y;
         get_xy_dari_posisi(p1_pos, &p1_x, &p1_y);
         get_xy_dari_posisi(p2_pos, &p2_x, &p2_y);
 
-        // Render Pion (Jika berada di petak sama, posisi digeser berdampingan)
         if (p1_pos == p2_pos) {
             gsKit_prim_sprite(gsGlobal, p1_x + 2, p1_y + 10, p1_x + 18, p1_y + 30, 1, color_p1); 
             gsKit_prim_sprite(gsGlobal, p2_x + 20, p2_y + 10, p2_x + 36, p2_y + 30, 1, color_p2); 
@@ -187,14 +187,14 @@ int main(int argc, char *argv[]) {
             gsKit_prim_sprite(gsGlobal, p2_x + 8, p2_y + 8, p2_x + 30, p2_y + 30, 1, color_p2); 
         }
 
-        // Gambar panel informasi giliran & Dadu
+        // Gambar Panel Dadu & Giliran
         if (pemenang == 0) {
             u64 warna_giliran = (giliran == 1) ? color_p1 : color_p2;
             gsKit_prim_sprite(gsGlobal, 480, 80, 560, 100, 2, warna_giliran); 
             if (angka_dadu_terakhir > 0) draw_dadu(gsGlobal, angka_dadu_terakhir, color_dot);
         }
 
-        // Eksekusi antrean render ke Graphics Synthesizer & Flip screen
+        // Eksekusi antrean render dan tukar buffer gambar
         gsKit_queue_exec(gsGlobal);
         gsKit_sync_flip(gsGlobal);
     }
