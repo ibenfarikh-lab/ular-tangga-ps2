@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <libpad.h>
 #include <kernel.h>
+#include <iopcontrol.h>
 #include <gsKit.h>
 #include <dmaKit.h>
 #include <math.h>
@@ -21,8 +22,8 @@ static char padBuf[256] __attribute__((aligned(64)));
 #define LAYAR_SET   1
 #define LAYAR_GAME  2
 
-// Baris menu judul (koord layar 640x448, sesuai lukisan judul)
-static const int MENU_Y[3] = {273, 313, 352};
+// Baris menu judul (koord layar 640x448, sesuai kanvas judul baru)
+static const int MENU_Y[3] = {332, 369, 406};
 // Baris menu pengaturan
 static const int SET_Y[2] = {196, 262};
 
@@ -200,9 +201,16 @@ static void pakai_tekstur(GSGLOBAL *gsGlobal, const unsigned char *piksel, int w
 }
 
 int main(int argc, char *argv[]) {
+    // Reset IOP lebih dulu: game diluncurkan dari wOPL/uLaunchELF yang sudah
+    // memuat driver stik sendiri; tanpa reset, pemuatan modul stik kita
+    // tabrakan dan stik mati total di konsol asli (di PCSX2 tidak terasa
+    // karena IOP bersih). Pola yang sama dipakai uLaunchELF (Init_Reset_IOP=1).
+    SifInitRpc(0);
+    SifIopReset("", 0);
+    while (!SifIopSync()) ;
     SifInitRpc(0);
     SifLoadFileInit();
-    printf("[LOG ULAR TANGGA]: Program EE berhasil dipicu.\n");
+    printf("[LOG ULAR TANGGA]: Program EE berhasil dipicu (IOP sudah direset).\n");
 
     GSGLOBAL *gsGlobal = gsKit_init_global();
     // Standar tampilan dikunci user: NTSC 640x448 (480i, 4:3)
@@ -228,6 +236,7 @@ int main(int argc, char *argv[]) {
     SifLoadModule("rom0:XPADMAN", 0, NULL);
     padInit(0);
     padPortOpen(0, 0, padBuf);
+    padSetMainMode(0, 0, 1, 3); // mode analog: lampu stik menyala, tombol terbaca
 
     // Alokasikan satu slot tekstur sebesar layar penuh; isinya diganti per layar
     texLayar.PSM = GS_PSM_CT32;
@@ -398,8 +407,8 @@ int main(int argc, char *argv[]) {
             u64 warna_bingkai = ((frame_counter / 20) % 2 == 0)
                 ? GS_SETREG_RGBAQ(90, 170, 255, 0x00, 0)
                 : GS_SETREG_RGBAQ(170, 225, 255, 0x00, 0);
-            draw_bingkai(gsGlobal, 168, cy - 20, 472, cy + 20, warna_bingkai);
-            gsKit_prim_triangle(gsGlobal, 186, cy - 7, 186, cy + 7, 199, cy, 2, color_kuning);
+            draw_bingkai(gsGlobal, 183, cy - 17, 457, cy + 17, warna_bingkai);
+            gsKit_prim_triangle(gsGlobal, 190, cy - 7, 190, cy + 7, 202, cy, 2, color_kuning);
         } else if (layar == LAYAR_SET) {
             gsKit_clear(gsGlobal, color_navy);
             gsKit_prim_sprite_texture(gsGlobal, &texLayar,
