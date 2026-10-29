@@ -8,7 +8,6 @@
 #include <gsKit.h>
 #include <dmaKit.h>
 
-// PERBAIKAN SINTAKS: Ukuran buffer array [256] wajib dicantumkan secara gamblang
 static char padBuf[256] __attribute__((aligned(64)));
 
 // 16 Entri Ular Tangga
@@ -113,16 +112,16 @@ int main(int argc, char *argv[]) {
     u64 color_awal = GS_SETREG_RGBAQ(100, 255, 100, 0x80, 0); 
     u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x80, 0); 
 
-    // Sinkronisasi status port stik sebelum memulai game loop
+    // PERBAIKAN: Menggunakan nilai integer mentah untuk mengecek kesiapan stik
     int state;
-    while((state = padGetState(0, 0)) != PAD_STATE_READY && state != PAD_STATE_CHECKPAD);
+    while((state = padGetState(0, 0)) != 6 && state != 2 && state != 1);
 
     // Main Game Loop
     while (1) {
         frame_counter++;
         
-        // Baca Input dengan pengaman status port stik
-        if (pemenang == 0 && (padGetState(0, 0) == PAD_STATE_READY)) {
+        // Baca Input dengan pengaman status port stik (State 6 = Ready)
+        if (pemenang == 0 && (padGetState(0, 0) == 6)) {
             int ret = padRead(0, 0, &buttons);
             if (ret != 0) {
                 paddata = 0xffff ^ buttons.btns;
