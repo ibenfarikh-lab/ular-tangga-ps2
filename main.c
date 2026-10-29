@@ -27,24 +27,46 @@ static const int MENU_Y[3] = {332, 369, 406};
 // Baris menu pengaturan
 static const int SET_Y[2] = {196, 262};
 
-// 16 Entri Ular Tangga
+// Struktur data untuk merepresentasikan titik awal (kepala ular/bawah tangga) dan tujuan akhir
+typedef struct {
+    int asal;
+    int tujuan;
+} Jump;
+
+// Daftar lengkap 16 entri (8 Tangga & 8 Ular) sesuai spesifikasi yang diinginkan
+static const Jump daftar_ular_tangga[] = {
+    // === TANGGA (NAIK) ===
+    {4,  14},
+    {9,  31},
+    {20, 38},
+    {28, 84}, // Tangga panjang ke atas
+    {40, 59},
+    {51, 67},
+    {63, 81},
+    {71, 91},
+
+    // === ULAR (TURUN) ===
+    {17, 7},
+    {54, 34},
+    {62, 19},
+    {64, 60},
+    {87, 24}, // Ular panjang dari atas turun ke bawah
+    {93, 73},
+    {95, 75},
+    {99, 78}
+};
+
+// Fungsi pengecekan posisi menggunakan pencarian tabel (Lookup Table)
 int cekUlarTangga(int posisi) {
-    if (posisi == 4)  return 14;
-    if (posisi == 9)  return 31;
-    if (posisi == 20) return 38;
-    if (posisi == 28) return 84;
-    if (posisi == 40) return 59;
-    if (posisi == 51) return 67;
-    if (posisi == 63) return 81;
-    if (posisi == 71) return 91;
-    if (posisi == 17) return 7;
-    if (posisi == 54) return 34;
-    if (posisi == 62) return 19;
-    if (posisi == 64) return 60;
-    if (posisi == 87) return 24;
-    if (posisi == 93) return 73;
-    if (posisi == 95) return 75;
-    if (posisi == 99) return 78;
+    int jumlah_entri = sizeof(daftar_ular_tangga) / sizeof(daftar_ular_tangga[0]);
+
+    for (int i = 0; i < jumlah_entri; i++) {
+        if (daftar_ular_tangga[i].asal == posisi) {
+            return daftar_ular_tangga[i].tujuan;
+        }
+    }
+
+    // Jika tidak menginjak kepala ular atau tangga, kembalikan posisi normal
     return posisi;
 }
 
