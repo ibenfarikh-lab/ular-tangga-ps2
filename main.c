@@ -8,6 +8,7 @@
 #include <gsKit.h>
 #include <dmaKit.h>
 
+// PERBAIKAN SINTAKS: Ukuran buffer array [256] wajib dicantumkan secara gamblang
 static char padBuf[256] __attribute__((aligned(64)));
 
 // 16 Entri Ular Tangga
@@ -69,7 +70,7 @@ int main(int argc, char *argv[]) {
     padInit(0);
     padPortOpen(0, 0, padBuf);
 
-    // 3. Init GS Global Dahulu (Standar gskit terbaru)
+    // 3. Init GS Global Dahulu (Alokasi memori dasar gskit)
     GSGLOBAL *gsGlobal = gsKit_init_global();
     gsGlobal->Mode = GS_MODE_NTSC;
     gsGlobal->Height = 448;
@@ -81,11 +82,11 @@ int main(int argc, char *argv[]) {
     gsGlobal->PSM = GS_PSM_CT32;
     gsGlobal->PSMZ = GS_PSMZ_16S;
     
-    // 4. Perbaikan Parameter DMA: Disesuaikan dengan API resmi ps2sdk
+    // 4. Inisialisasi DMA Berdasarkan Standar gsKit (Mencegah Blank Screen)
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
     dmaKit_chan_init(DMA_CHANNEL_GIF);
 
-    // Aktifkan Output Layar
+    // Aktifkan Output Layar Utama
     gsKit_init_screen(gsGlobal);
     gsKit_mode_switch(gsGlobal, GS_ONESHOT);
     gsKit_vram_clear(gsGlobal); 
