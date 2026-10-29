@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
     printf("[LOG ULAR TANGGA]: Program EE berhasil dipicu.\n");
 
     GSGLOBAL *gsGlobal = gsKit_init_global();
-    gsGlobal->Mode = GS_MODE_NTSC; // Paksa NTSC agar stabil di berbagai emulator
+    gsGlobal->Mode = GS_MODE_NTSC; 
     gsGlobal->Height = 448;
     gsGlobal->Width = 640;
     gsGlobal->Interlace = GS_INTERLACED; 
@@ -108,27 +108,26 @@ int main(int argc, char *argv[]) {
     PionGame p1 = {1, 1, 0, 1, 0};
     PionGame p2 = {1, 1, 0, 1, 0};
     
-    int giliran = 1; // 1 untuk P1, 2 untuk P2
+    int giliran = 1; 
     int angka_dadu_terakhir = 0;
     int pemenang = 0; 
-    int pesan_status_tipe = 0; // 0: Lempar Dadu, 1: Naik Tangga, 2: Turun Ular
+    int pesan_status_tipe = 0; 
     
     unsigned int frame_counter = 0;
     unsigned int frame_langkah_timer = 0;
     int seed_diatur = 0;
 
-    // Palet Warna
-    u64 color_bg = GS_SETREG_RGBAQ(25, 35, 50, 0x00, 0);       // Biru gelap elegan
+    u64 color_bg = GS_SETREG_RGBAQ(25, 35, 50, 0x00, 0);       
     u64 color_petak1 = GS_SETREG_RGBAQ(60, 100, 160, 0x00, 0);
     u64 color_petak2 = GS_SETREG_RGBAQ(40, 70, 120, 0x00, 0);
-    u64 color_p1 = GS_SETREG_RGBAQ(255, 60, 60, 0x00, 0);      // Merah P1
-    u64 color_p2 = GS_SETREG_RGBAQ(60, 200, 255, 0x00, 0);     // Biru Muda P2
+    u64 color_p1 = GS_SETREG_RGBAQ(255, 60, 60, 0x00, 0);      
+    u64 color_p2 = GS_SETREG_RGBAQ(60, 200, 255, 0x00, 0);     
     u64 color_dot = GS_SETREG_RGBAQ(240, 240, 240, 0x00, 0);   
     u64 color_awal = GS_SETREG_RGBAQ(50, 200, 100, 0x00, 0); 
     u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x00, 0); 
     u64 color_panel = GS_SETREG_RGBAQ(40, 55, 80, 0x00, 0);
 
-    printf("[LOG ULAR TANGGA]: Memasuki game loop utama dengan animasi langkah.\n");
+    printf("[LOG ULAR TANGGA]: Memasuki game loop utama.\n");
 
     while (1) {
         frame_counter++;
@@ -136,7 +135,7 @@ int main(int argc, char *argv[]) {
         PionGame *p_skg = (giliran == 1) ? &p1 : &p2;
 
         // 1. Logika Pembacaan Stik & Kontrol
-        if (pemain == 0 && p_skg->status_aksi == 0 && (padGetState(0, 0) == 6)) {
+        if (pemenang == 0 && p_skg->status_aksi == 0 && (padGetState(0, 0) == 6)) {
             int ret = padRead(0, 0, &buttons);
             if (ret != 0) {
                 paddata = 0xffff ^ buttons.btns;
@@ -152,7 +151,7 @@ int main(int argc, char *argv[]) {
                     
                     angka_dadu_terakhir = (rand() % 6) + 1;
                     p_skg->sisa_langkah = angka_dadu_terakhir;
-                    p_skg->status_aksi = 1; // Mulai berjalan bertahap
+                    p_skg->status_aksi = 1; 
                     pesan_status_tipe = 0;
                 }
             }
@@ -161,7 +160,6 @@ int main(int argc, char *argv[]) {
         // 2. Logika Animasi Pergerakan Bertahap per Frame
         if (p_skg->status_aksi == 1) {
             frame_langkah_timer++;
-            // Berjalan 1 petak setiap 15 frame agar mulus diamati
             if (frame_langkah_timer >= 15) {
                 frame_langkah_timer = 0;
                 if (p_skg->sisa_langkah > 0) {
@@ -169,7 +167,6 @@ int main(int argc, char *argv[]) {
                     p_skg->sisa_langkah--;
                     if (p_skg->posisi_tampil > 100) p_skg->posisi_tampil = 100;
                 } else {
-                    // Selesai berjalan maju, tetapkan sebagai posisi real sementara
                     p_skg->posisi_real = p_skg->posisi_tampil;
                     int posisi_setelah_ular = cekUlarTangga(p_skg->posisi_real);
                     
@@ -177,13 +174,11 @@ int main(int argc, char *argv[]) {
                         pemenang = giliran;
                         p_skg->status_aksi = 0;
                     } else if (posisi_setelah_ular != p_skg->posisi_real) {
-                        // Jika menginjak kepala ular atau kaki tangga
                         p_skg->target_tujuan = posisi_setelah_ular;
                         pesan_status_tipe = (posisi_setelah_ular > p_skg->posisi_real) ? 1 : 2;
-                        p_skg->status_aksi = 2; // Masuk status transisi ular/tangga
+                        p_skg->status_aksi = 2; 
                         frame_langkah_timer = 0;
                     } else {
-                        // Sempurna, ganti giliran
                         p_skg->status_aksi = 0;
                         giliran = (giliran == 1) ? 2 : 1;
                     }
@@ -193,7 +188,7 @@ int main(int argc, char *argv[]) {
         // 3. Logika Transisi Saat Kena Ular / Tangga
         else if (p_skg->status_aksi == 2) {
             frame_langkah_timer++;
-            if (frame_langkah_timer >= 45) { // Jeda 45 frame agar pemain membaca notifikasi
+            if (frame_langkah_timer >= 45) { 
                 frame_langkah_timer = 0;
                 p_skg->posisi_real = p_skg->target_tujuan;
                 p_skg->posisi_tampil = p_skg->target_tujuan;
@@ -208,10 +203,8 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Sync V-Sync TV
         gsKit_vsync_wait();
 
-        // Render Background
         if (pemenang != 0) {
             u64 warna_menang = (pemenang == 1) ? color_p1 : color_p2;
             u64 flash_bg = (frame_counter % 20 < 10) ? warna_menang : color_bg;
@@ -220,7 +213,6 @@ int main(int argc, char *argv[]) {
             gsKit_clear(gsGlobal, color_bg);
         }
 
-        // Render Papan Grid Ular Tangga (10x10)
         for (int i = 1; i <= 100; i++) {
             int px, py;
             get_xy_dari_posisi(i, &px, &py);
@@ -230,7 +222,6 @@ int main(int argc, char *argv[]) {
             gsKit_prim_sprite(gsGlobal, px, py, px + 38, py + 38, 2, warna_petak);
         }
 
-        // Render Pion Pemain 1 & 2
         int p1_x, p1_y, p2_x, p2_y;
         get_xy_dari_posisi(p1.posisi_tampil, &p1_x, &p1_y);
         get_xy_dari_posisi(p2.posisi_tampil, &p2_x, &p2_y);
@@ -243,27 +234,20 @@ int main(int argc, char *argv[]) {
             gsKit_prim_sprite(gsGlobal, p2_x + 8, p2_y + 8, p2_x + 30, p2_y + 30, 1, color_p2); 
         }
 
-        // Render Panel Samping & Informasi Permainan
         if (pemenang == 0) {
-            // Panel Kotak Informasi Samping
             gsKit_prim_sprite(gsGlobal, 460, 40, 600, 280, 2, color_panel);
 
-            // Indikator Giliran Pemain
             u64 warna_giliran = (giliran == 1) ? color_p1 : color_p2;
             gsKit_prim_sprite(gsGlobal, 480, 70, 560, 95, 1, warna_giliran); 
             
-            // Gambar Dadu Jika Dadu Sudah Dilempar
             if (angka_dadu_terakhir > 0) {
                 draw_dadu(gsGlobal, angka_dadu_terakhir, color_dot);
             }
 
-            // Panel Banner Status di Bawah
             gsKit_prim_sprite(gsGlobal, 460, 310, 600, 380, 2, color_panel);
             if (pesan_status_tipe == 1) {
-                // Notifikasi Naik Tangga
                 gsKit_prim_sprite(gsGlobal, 475, 330, 585, 360, 1, color_awal);
             } else if (pesan_status_tipe == 2) {
-                // Notifikasi Turun Ular
                 gsKit_prim_sprite(gsGlobal, 475, 330, 585, 360, 1, color_p1);
             }
         }
