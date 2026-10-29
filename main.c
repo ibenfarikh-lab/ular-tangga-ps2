@@ -7,6 +7,8 @@
 #include <gsKit.h>
 #include <dmaKit.h>
 
+#include "board_data.h"
+
 static char padBuf[256] __attribute__((aligned(64)));
 
 // 16 Entri Ular Tangga (Sudah dirapikan strukturnya agar compiler tidak protes)
@@ -36,8 +38,8 @@ void get_xy_dari_posisi(int posisi, int *x, int *y) {
     int baris = index / 10;
     int kolom = index % 10;
     if (baris % 2 != 0) kolom = 9 - kolom;
-    *x = 40 + (kolom * 40); 
-    *y = 400 - (baris * 40); 
+    *x = 32 + (kolom * 89) / 2;
+    *y = 32 + ((9 - baris) * 89) / 2;
 }
 
 // Fungsi menggambar dadu visual
@@ -105,6 +107,31 @@ int main(int argc, char *argv[]) {
     padInit(0);
     padPortOpen(0, 0, padBuf);
 
+    // Tekstur papan ilustrasi (terbukti tampil di PCSX2 29 Okt 23:28):
+    // alokasi VRAM + unggah, pola loader gsToolkit seperti tes tekstur.
+    GSTEXTURE boardTex;
+    boardTex.Width = 512;
+    boardTex.Height = 512;
+    boardTex.PSM = GS_PSM_CT32;
+    boardTex.Filter = GS_FILTER_LINEAR;
+    boardTex.Mem = (u32 *)board_pixels;
+    boardTex.Clut = NULL;
+    boardTex.VramClut = 0;
+    boardTex.Delayed = 0;
+    boardTex.Vram = gsKit_vram_alloc(gsGlobal,
+                        gsKit_texture_size(512, 512, GS_PSM_CT32),
+                        GSKIT_ALLOC_USERBUFFER);
+    if (boardTex.Vram == GSKIT_ALLOC_ERROR) {
+        while (1) {
+            gsKit_vsync_wait();
+            gsKit_clear(gsGlobal, GS_SETREG_RGBAQ(255, 0, 0, 0x00, 0));
+            gsKit_queue_exec(gsGlobal);
+            gsKit_sync_flip(gsGlobal);
+        }
+    }
+    gsKit_texture_upload(gsGlobal, &boardTex);
+    printf("[LOG ULAR TANGGA]: Tekstur papan terunggah.\n");
+
     // Variabel Game
     struct padButtonStatus buttons;
     u32 paddata, old_pad = 0, new_pad;
@@ -117,15 +144,11 @@ int main(int argc, char *argv[]) {
     unsigned int frame_counter = 0;
     int seed_diatur = 0;
 
-    // Background diset Hijau Terang untuk uji coba visual awal
-    u64 color_bg = GS_SETREG_RGBAQ(0, 255, 0, 0x00, 0);
-    u64 color_petak1 = GS_SETREG_RGBAQ(60, 100, 160, 0x00, 0);
-    u64 color_petak2 = GS_SETREG_RGBAQ(40, 70, 120, 0x00, 0);
+    // Background = hijau padang lukisan tekstur (contoh piksel board512.png)
+    u64 color_bg = GS_SETREG_RGBAQ(52, 131, 70, 0x00, 0);
     u64 color_p1 = GS_SETREG_RGBAQ(255, 50, 50, 0x00, 0);   
     u64 color_p2 = GS_SETREG_RGBAQ(50, 200, 255, 0x00, 0);  
     u64 color_dot = GS_SETREG_RGBAQ(10, 10, 10, 0x00, 0);   
-    u64 color_awal = GS_SETREG_RGBAQ(100, 255, 100, 0x00, 0); 
-    u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x00, 0); 
 
     printf("[LOG ULAR TANGGA]: Memasuki putaran game loop utama.\n");
 
@@ -176,15 +199,11 @@ int main(int argc, char *argv[]) {
             gsKit_clear(gsGlobal, color_bg);
         }
 
-        // Menggambar Papan Grid Ular Tangga (10x10)
-        for (int i = 1; i <= 100; i++) {
-            int px, py;
-            get_xy_dari_posisi(i, &px, &py);
-            u64 warna_petak = (i % 2 == 0) ? color_petak1 : color_petak2;
-            if (i == 1) warna_petak = color_awal;
-            if (i == 100) warna_petak = color_akhir;
-            gsKit_prim_sprite(gsGlobal, px, py, px + 38, py + 38, 2, warna_petak);
-        }
+        // Gambar papan ilustrasi (tekstur) - bidak & panel digambar sesudah ini
+        gsKit_prim_sprite_texture(gsGlobal, &boardTex,
+                                  0, 0, 0, 0,
+                                  512, 512, 512, 512,
+                                  3, GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x00, 0));
 
         // Gambar Pion Pemain
         int p1_x, p1_y, p2_x, p2_y;
