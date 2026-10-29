@@ -1,6 +1,5 @@
 #include <tamtypes.h>
 #include <sifrpc.h>
-#include <iopcontrol.h> 
 #include <loadfile.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,14 +55,15 @@ void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
 }
 
 int main(int argc, char *argv[]) {
-    // 1. Reset IOP & Sinkronisasi Hardware Awal
-    SifInitRpc(0);
-    while(!SifIopReset("", 0)){};
-    while(!SifIopSync()){};
+    // 1. Inisialisasi Kernel PS2 Dasar (Hapus SifIopReset yang bikin blank/freeze)
     SifInitRpc(0);
     SifLoadFileInit();
 
-    // 2. TATA URUTAN GS BARU: Alokasikan, Konfigurasi Atribut Layar, dan Hidupkan Screen secara Berurutan
+    // 2. Inisialisasi Jalur DMA Grafis WAJIB Paling Awal sebelum gsKit
+    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
+    dmaKit_chan_init(DMA_CHANNEL_GIF);
+
+    // 3. Inisialisasi Grafis GS Global & Layar Utama
     GSGLOBAL *gsGlobal = gsKit_init_global();
     gsGlobal->Mode = GS_MODE_NTSC;
     gsGlobal->Height = 448;
@@ -75,18 +75,11 @@ int main(int argc, char *argv[]) {
     gsGlobal->PSM = GS_PSM_CT32;
     gsGlobal->PSMZ = GS_PSMZ_16S;
     
-    // Hidupkan Layar terlebih dahulu agar VRAM siap ditempati
     gsKit_init_screen(gsGlobal);
-    
-    // Inisialisasi Jalur DMA Khusus Grafis (GIF) setelah layar hidup
-    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
-    dmaKit_chan_init(DMA_CHANNEL_GIF);
-
-    // Atur mode persistent rendering agar data sprite menetap di VRAM
     gsKit_mode_switch(gsGlobal, GS_PERSISTENT);
     gsKit_vram_clear(gsGlobal); 
 
-    // 3. Pemuatan Modul Stik Dilakukan setelah Rangkaian Grafis Selesai Diatur
+    // 4. Pemuatan Modul Input Stik PS2
     SifLoadModule("rom0:XSIO2MAN", 0, NULL);
     SifLoadModule("rom0:XPADMAN", 0, NULL);
     padInit(0);
@@ -97,15 +90,15 @@ int main(int argc, char *argv[]) {
     u32 paddata, old_pad = 0, new_pad;
     
     int p1_pos = 1, p2_pos = 1;
-    int giliran = 1; // 1 = P1, 2 = P2
+    int giliran = 1; 
     int angka_dadu_terakhir = 0;
     int pemenang = 0; 
     
     unsigned int frame_counter = 0;
     int seed_diatur = 0;
 
-    // Palette Warna (Alpha channel = 0x80)
-    u64 color_bg = GS_SETREG_RGBAQ(20, 20, 25, 0x80, 0);
+    // BUKTI VISUAL: Mengubah background menjadi Hijau Terang untuk memastikan layar menyala
+    u64 color_bg = GS_SETREG_RGBAQ(0, 255, 0, 0x80, 0);
     u64 color_petak1 = GS_SETREG_RGBAQ(60, 100, 160, 0x80, 0);
     u64 color_petak2 = GS_SETREG_RGBAQ(40, 70, 120, 0x80, 0);
     u64 color_p1 = GS_SETREG_RGBAQ(255, 50, 50, 0x80, 0);   
@@ -114,14 +107,11 @@ int main(int argc, char *argv[]) {
     u64 color_awal = GS_SETREG_RGBAQ(100, 255, 100, 0x80, 0); 
     u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x80, 0); 
 
-    // Bersihkan layar pertama kali untuk memicu deteksi hardware PCSX2
-    gsKit_clear(gsGlobal, color_bg);
-
     // Main Game Loop
     while (1) {
         frame_counter++;
         
-        // Baca Input jika stik terdeteksi siap (State 6 = Ready)
+        // Ambil Input Stik secara aman (Hanya saat port mengembalikan status 6 = READY)
         if (pemenang == 0 && (padGetState(0, 0) == 6)) {
             int ret = padRead(0, 0, &buttons);
             if (ret != 0) {
@@ -152,7 +142,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Tunggu sinyal sinkronisasi TV Vertikal (V-Sync)
+        // Tunggu refresh layar TV (V-Sync)
         gsKit_vsync_wait();
 
         // Render Background game
