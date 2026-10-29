@@ -9,16 +9,14 @@
 
 static char padBuf[256] __attribute__((aligned(64)));
 
-// Struktur data untuk melacak posisi asli dan animasi visual pion
 typedef struct {
-    int posisi_real;      // Posisi aktual di papan (1-100)
-    int posisi_tampil;    // Posisi visual saat berjalan bertahap
-    int sisa_langkah;     // Sisa langkah gerak dadu
-    int target_tujuan;    // Tujuan akhir setelah ular/tangga
-    int status_aksi;      // 0: Diam/Giliran, 1: Berjalan, 2: Cek Ular/Tangga
+    int posisi_real;      
+    int posisi_tampil;    
+    int sisa_langkah;     
+    int target_tujuan;    
+    int status_aksi;      
 } PionGame;
 
-// 16 Entri Ular Tangga
 int cekUlarTangga(int posisi) {
     if (posisi == 4)  return 14;   
     if (posisi == 9)  return 31;
@@ -39,7 +37,6 @@ int cekUlarTangga(int posisi) {
     return posisi;
 }
 
-// Konversi posisi 1-100 ke koordinat X,Y layar
 void get_xy_dari_posisi(int posisi, int *x, int *y) {
     if (posisi < 1) posisi = 1;
     if (posisi > 100) posisi = 100;
@@ -51,7 +48,6 @@ void get_xy_dari_posisi(int posisi, int *x, int *y) {
     *y = 400 - (baris * 40); 
 }
 
-// Fungsi menggambar dadu visual
 void draw_dadu(GSGLOBAL *gsGlobal, int angka_dadu, u64 color_dot) {
     int dx = 480, dy = 160; 
     gsKit_prim_sprite(gsGlobal, dx, dy, dx + 80, dy + 80, 2, GS_SETREG_RGBAQ(220, 220, 220, 0x80, 0));
@@ -80,13 +76,15 @@ int main(int argc, char *argv[]) {
 
     GSGLOBAL *gsGlobal = gsKit_init_global();
     gsGlobal->Mode = GS_MODE_NTSC; 
-    gsGlobal->Height = 448;
     gsGlobal->Width = 640;
-    gsGlobal->Interlace = GS_INTERLACED; 
+    gsGlobal->Height = 448;
+    gsGlobal->Interlace = GS_NONINTERLACED; // Diubah ke non-interlaced agar stabil di HP
     gsGlobal->Field = GS_FIELD;          
     gsGlobal->ZBuffering = GS_SETTING_OFF;     
     gsGlobal->PrimAlphaEnable = GS_SETTING_OFF; 
-    gsGlobal->PSM = GS_PSM_CT32;
+    
+    // OPTIMASI UTAMA UNTUK ANDROID: Turunkan ke PSM_CT16 agar tidak blank di GPU HP
+    gsGlobal->PSM = GS_PSM_CT16;
     gsGlobal->PSMZ = GS_PSMZ_16S;
     
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
@@ -94,8 +92,14 @@ int main(int argc, char *argv[]) {
 
     gsKit_init_screen(gsGlobal);
     gsKit_mode_switch(gsGlobal, GS_PERSISTENT);
+    
+    // Pembersihan VRAM ganda
     gsKit_vram_clear(gsGlobal); 
-    printf("[LOG ULAR TANGGA]: gsKit Screen Berhasil Menyala.\n");
+    gsKit_clear(gsGlobal, GS_SETREG_RGBAQ(25, 35, 50, 0x00, 0));
+    gsKit_queue_exec(gsGlobal);
+    gsKit_sync_flip(gsGlobal);
+
+    printf("[LOG ULAR TANGGA]: gsKit Screen Berhasil Menyala (16-bit Mode).\n");
 
     SifLoadModule("rom0:XSIO2MAN", 0, NULL);
     SifLoadModule("rom0:XPADMAN", 0, NULL);
@@ -127,14 +131,13 @@ int main(int argc, char *argv[]) {
     u64 color_akhir = GS_SETREG_RGBAQ(255, 200, 50, 0x00, 0); 
     u64 color_panel = GS_SETREG_RGBAQ(40, 55, 80, 0x00, 0);
 
-    printf("[LOG ULAR TANGGA]: Memasuki game loop utama.\n");
+    printf("[LOG ULAR TANGGA]: Masuk game loop.\n");
 
     while (1) {
         frame_counter++;
         
         PionGame *p_skg = (giliran == 1) ? &p1 : &p2;
 
-        // 1. Logika Pembacaan Stik & Kontrol
         if (pemenang == 0 && p_skg->status_aksi == 0 && (padGetState(0, 0) == 6)) {
             int ret = padRead(0, 0, &buttons);
             if (ret != 0) {
@@ -157,7 +160,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // 2. Logika Animasi Pergerakan Bertahap per Frame
         if (p_skg->status_aksi == 1) {
             frame_langkah_timer++;
             if (frame_langkah_timer >= 15) {
@@ -185,7 +187,6 @@ int main(int argc, char *argv[]) {
                 }
             }
         } 
-        // 3. Logika Transisi Saat Kena Ular / Tangga
         else if (p_skg->status_aksi == 2) {
             frame_langkah_timer++;
             if (frame_langkah_timer >= 45) { 
