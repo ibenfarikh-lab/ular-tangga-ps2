@@ -13,6 +13,9 @@ jobs:
     - name: Ambil kode
       uses: actions/checkout@v4
 
+    - name: Pasang make
+      run: apt-get update && apt-get install -y make
+
     - name: Compile game
       run: make
 
