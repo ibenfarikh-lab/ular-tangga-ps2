@@ -1,5 +1,37 @@
 #ifndef BOARD_DATA_H
 #define BOARD_DATA_H
+
+// Struktur data untuk merepresentasikan titik awal (kepala ular/bawah tangga) dan tujuan akhir
+typedef struct {
+    int asal;
+    int tujuan;
+} Jump;
+
+// Daftar lengkap 16 entri (8 Tangga & 8 Ular) sesuai spesifikasi game.
+// Satu-satunya daftar resmi rute; gambar papan pada board_pixels di bawah
+// digambar dari daftar yang sama.
+static const Jump daftar_ular_tangga[] = {
+    // === TANGGA (NAIK) ===
+    {4,  14},
+    {9,  31},
+    {20, 38},
+    {28, 84}, // Tangga panjang ke atas
+    {40, 59},
+    {51, 67},
+    {63, 81},
+    {71, 91},
+
+    // === ULAR (TURUN) ===
+    {17, 7},
+    {54, 34},
+    {62, 19},
+    {64, 60},
+    {87, 24}, // Ular panjang dari atas turun ke bawah
+    {93, 73},
+    {95, 75},
+    {99, 78}
+};
+
 static const unsigned char board_pixels[640*448*4] = {
 10,24,26,128,18,34,33,128,21,41,36,128,21,44,35,128,23,43,33,128,22,41,30,128,17,36,26,128,7,22,16,128,1,15,10,128,13,29,24,128,14,23,23,128,1,6,8,128,17,30,27,128,14,31,24,128,9,22,18,128,6,15,14,128,
 3,15,13,128,4,18,17,128,3,17,17,128,2,15,16,128,3,13,17,128,3,12,17,128,1,10,14,128,0,7,12,128,2,10,14,128,2,10,16,128,2,9,18,128,1,8,16,128,5,17,29,128,3,26,42,128,1,24,41,128,1,24,43,128,
