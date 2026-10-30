@@ -12,7 +12,7 @@ EE_CFLAGS  = -D_EE -O2 -G0 -Wall \
              -I$(PS2SDK)/ports/include
 EE_LDFLAGS = -L$(PS2SDK)/ee/lib \
              -L$(PS2SDK)/ports/lib
-EE_LIBS    = -lgskit -ldmakit -lpad -lkernel -lc -lm
+EE_LIBS    = -lgskit -ldmakit -lpad -lmc -lkernel -lc -lm
 
 EE_BIN  = ulartangga_slim.elf
 EE_OBJS = main.o
