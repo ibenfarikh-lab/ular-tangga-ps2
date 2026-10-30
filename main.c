@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <libpad.h>
 #include <libmc.h>
+#include <audsrv.h>
 #include <kernel.h>
 #include <iopcontrol.h>
 #include <gsKit.h>
@@ -17,6 +18,7 @@
 #include "set_data.h"
 #include "aturan_data.h"
 #include "dice_data.h"
+#include "audio_data.h"
 
 static char padBuf[256] __attribute__((aligned(64)));
 static char padBuf2[256] __attribute__((aligned(64)));
@@ -39,8 +41,8 @@ static char padBuf2[256] __attribute__((aligned(64)));
 
 // Baris menu judul (koord layar 640x448, sesuai kanvas judul)
 static const int MENU_Y[3] = {332, 369, 406};
-// Baris layar pengaturan baru (kanvas set.png): GETAR / KECEPATAN / KEMBALI
-static const int SET_Y[3] = {194, 238, 282};
+// Baris layar pengaturan (kanvas set.png): GETAR / KECEPATAN / MUSIK / SUARA / KEMBALI
+static const int SET_Y[5] = {182, 216, 250, 284, 318};
 // Baris layar aturan main (kanvas aturan.png)
 static const int ATURAN_Y[7] = {148, 180, 212, 244, 276, 308, 340};
 // Baris menu jeda & pemenang (digambar kode di atas papan)
@@ -312,12 +314,64 @@ static const unsigned char *WAJAH_PIX[6] = {
 // ===== Pengaturan & aturan (tersimpan ke memory card) =====
 static int set_getar = 0;        // 0 MATI, 1 HIDUP
 static int set_kecepatan = 0;    // 0 NORMAL, 1 CEPAT
+static int set_musik = 80;       // volume musik 0..100
+static int set_suara = 100;      // volume efek 0..100
 static int aturan_awal = AWAL_P1;
 static int aturan_model = MODEL_BERBAGI;
 static int aturan_bonus6 = 0;    // 0 MATI, 1 HIDUP
 static int aturan_finis = FINIS_TEPAT;
 static int aturan_mulai6 = 0;    // 0 MATI, 1 HIDUP
 static int rekor_menang[3] = {0, 0, 0};   // indeks pemain 1..2
+
+// ===== Audio: audsrv + sampel ADPCM tertanam (audio_data.h) =====
+// Musik = satu loop ADPCM di kanal khusus; efek = sampel ADPCM pendek
+// dipicu per kejadian. Semua panggilan dijaga audio_ok: bila modul audio
+// gagal dimuat, game tetap berjalan tanpa suara.
+static int audio_ok = 0;
+static int musik_ch = -1;
+static int kocok_ch = -1;
+static audsrv_adpcm_t s_musik, s_tok, s_pilih, s_batal, s_kocok, s_tuk,
+                      s_langkah, s_tangga, s_ular, s_bonus, s_gagal,
+                      s_seri, s_fanfare;
+
+static void bunyi(audsrv_adpcm_t *s) {
+    if (!audio_ok || set_suara <= 0) return;
+    int ch = audsrv_ch_play_adpcm(-1, s);
+    if (ch >= 0) audsrv_adpcm_set_volume_and_pan(ch, set_suara, 0);
+}
+static void bunyi_kocok(void) {
+    if (!audio_ok || set_suara <= 0) { kocok_ch = -1; return; }
+    kocok_ch = audsrv_ch_play_adpcm(-1, &s_kocok);
+    if (kocok_ch >= 0) audsrv_adpcm_set_volume_and_pan(kocok_ch, set_suara, 0);
+}
+static void kocok_diam(void) {
+    if (audio_ok && kocok_ch >= 0) audsrv_adpcm_set_volume_and_pan(kocok_ch, 0, 0);
+    kocok_ch = -1;
+}
+static void audio_mulai(void) {
+    int hasil_modul = 0;
+    if (SifLoadModule("rom0:LIBSD", 0, NULL) < 0) return;
+    if (SifExecModuleBuffer((void *)audsrv_irx, sizeof(audsrv_irx), 0, NULL, &hasil_modul) < 0) return;
+    if (audsrv_init() != 0) return;
+    audsrv_adpcm_init();
+    audsrv_set_volume(100);
+    audio_ok = 1;
+    audsrv_load_adpcm(&s_musik,   (void *)adp_musik,   sizeof(adp_musik));
+    audsrv_load_adpcm(&s_tok,     (void *)adp_tok,     sizeof(adp_tok));
+    audsrv_load_adpcm(&s_pilih,   (void *)adp_pilih,   sizeof(adp_pilih));
+    audsrv_load_adpcm(&s_batal,   (void *)adp_batal,   sizeof(adp_batal));
+    audsrv_load_adpcm(&s_kocok,   (void *)adp_kocok,   sizeof(adp_kocok));
+    audsrv_load_adpcm(&s_tuk,     (void *)adp_tuk,     sizeof(adp_tuk));
+    audsrv_load_adpcm(&s_langkah, (void *)adp_langkah, sizeof(adp_langkah));
+    audsrv_load_adpcm(&s_tangga,  (void *)adp_tangga,  sizeof(adp_tangga));
+    audsrv_load_adpcm(&s_ular,    (void *)adp_ular,    sizeof(adp_ular));
+    audsrv_load_adpcm(&s_bonus,   (void *)adp_bonus,   sizeof(adp_bonus));
+    audsrv_load_adpcm(&s_gagal,   (void *)adp_gagal,   sizeof(adp_gagal));
+    audsrv_load_adpcm(&s_seri,    (void *)adp_seri,    sizeof(adp_seri));
+    audsrv_load_adpcm(&s_fanfare, (void *)adp_fanfare, sizeof(adp_fanfare));
+    musik_ch = audsrv_ch_play_adpcm(-1, &s_musik);
+    if (musik_ch >= 0) audsrv_adpcm_set_volume_and_pan(musik_ch, set_musik, 0);
+}
 
 // ===== Simpan/muat memory card (libmc asinkron, tidak memblokir game) =====
 #define MC_O_RDONLY 0x0001
@@ -326,7 +380,7 @@ static int rekor_menang[3] = {0, 0, 0};   // indeks pemain 1..2
 #define MC_O_TRUNC  0x0400
 #define SAVE_MAGIC  0x55544731
 typedef struct {
-    int magic, getar, kecepatan, awal, model, bonus, finis, mulai6, rekor1, rekor2;
+    int magic, getar, kecepatan, awal, model, bonus, finis, mulai6, rekor1, rekor2, musik, suara;
 } SaveData;
 static SaveData save_buf;
 static int mc_op = 0;            // 0 diam, 1 muat, 2 simpan
@@ -380,6 +434,12 @@ static void mc_poll(unsigned int frame_counter) {
                     aturan_bonus6 = save_buf.bonus;
                     aturan_finis = save_buf.finis;
                     aturan_mulai6 = save_buf.mulai6;
+                    set_musik = save_buf.musik;
+                    set_suara = save_buf.suara;
+                    if (set_musik < 0 || set_musik > 100) set_musik = 80;
+                    if (set_suara < 0 || set_suara > 100) set_suara = 100;
+                    if (audio_ok && musik_ch >= 0)
+                        audsrv_adpcm_set_volume_and_pan(musik_ch, set_musik, 0);
                 }
                 rekor_menang[1] = save_buf.rekor1;
                 rekor_menang[2] = save_buf.rekor2;
@@ -401,6 +461,8 @@ static void mc_poll(unsigned int frame_counter) {
             save_buf.mulai6 = aturan_mulai6;
             save_buf.rekor1 = rekor_menang[1];
             save_buf.rekor2 = rekor_menang[2];
+            save_buf.musik = set_musik;
+            save_buf.suara = set_suara;
             mcOpen(0, 0, "ULARTANGGA/SAVE.BIN", MC_O_CREAT | MC_O_WRONLY | MC_O_TRUNC);
             mc_step = 2;
         } else if (mc_step == 2) {
@@ -480,6 +542,7 @@ static void finalisasi(void) {
         rekor_menang[g]++;
         mc_minta_simpan = 1;
         getar_untuk(g, 1, 255, 45);
+        bunyi(&s_fanfare);
         return;
     }
     if (final_skg > landing_skg) sprintf(pesan_hasil, "TANGGA! NAIK KE %d", final_skg);
@@ -488,6 +551,7 @@ static void finalisasi(void) {
     if (roll_skg == 6 && aturan_bonus6) {
         enam_beruntun++;
         strcat(pesan_hasil, " - LEMPAR LAGI");
+        bunyi(&s_bonus);
     } else {
         enam_beruntun = 0;
         giliran = 3 - g;
@@ -502,6 +566,7 @@ static void akhiri_tanpa_gerak(int batal) {
         if (roll_skg == 6 && aturan_bonus6) {
             enam_beruntun++;
             strcat(pesan_hasil, " - LEMPAR LAGI");
+            bunyi(&s_bonus);
         } else {
             enam_beruntun = 0;
             giliran = 3 - giliran;
@@ -580,7 +645,9 @@ int main(int argc, char *argv[]) {
     padSetActAlign(0, 0, ACT_ALIGN);
     padSetActAlign(1, 0, ACT_ALIGN);
     mcInit(MC_TYPE_MC);
-    printf("[LOG ULAR TANGGA]: Stik 1+2 & memory card siap.\n");
+    audio_mulai();
+    printf("[LOG ULAR TANGGA]: Stik 1+2 & memory card siap; audio %s.\n",
+           audio_ok ? "AKTIF (musik + efek ADPCM)" : "tidak aktif - game tanpa suara");
 
     // Alokasikan satu slot tekstur sebesar layar penuh; isinya diganti per layar
     texLayar.PSM = GS_PSM_CT32;
@@ -690,14 +757,18 @@ int main(int argc, char *argv[]) {
 
         // ---- Logika per layar ----
         if (layar == LAYAR_JUDUL) {
+            int sel_lama = menu_sel;
             if (menu_pad & PAD_DOWN) menu_sel = (menu_sel + 1) % 3;
             if (menu_pad & PAD_UP)   menu_sel = (menu_sel + 2) % 3;
+            if (menu_sel != sel_lama) bunyi(&s_tok);
             if (menu_pad & PAD_CROSS) {
                 if (menu_sel == 0) {
+                    bunyi(&s_pilih);
                     aturan_sel = 0;
                     ganti_tekstur(gsGlobal, aturan_pixels, 640, 448);
                     layar = LAYAR_ATURAN;
                 } else if (menu_sel == 1) {
+                    bunyi(&s_pilih);
                     set_sel = 0; set_dari = 0;
                     ganti_tekstur(gsGlobal, set_pixels, 640, 448);
                     layar = LAYAR_SET;
@@ -707,19 +778,37 @@ int main(int argc, char *argv[]) {
                 }
             }
         } else if (layar == LAYAR_SET) {
-            if (menu_pad & PAD_DOWN) set_sel = (set_sel + 1) % 3;
-            if (menu_pad & PAD_UP)   set_sel = (set_sel + 2) % 3;
+            int sel_lama = set_sel;
+            if (menu_pad & PAD_DOWN) set_sel = (set_sel + 1) % 5;
+            if (menu_pad & PAD_UP)   set_sel = (set_sel + 4) % 5;
+            if (set_sel != sel_lama) bunyi(&s_tok);
             int kembali = 0;
-            if (menu_pad & PAD_CIRCLE) kembali = 1;
-            if ((menu_pad & (PAD_LEFT | PAD_RIGHT)) && set_sel < 2) {
-                if (set_sel == 0) set_getar = !set_getar;
-                else set_kecepatan = !set_kecepatan;
+            if (menu_pad & PAD_CIRCLE) { kembali = 1; bunyi(&s_batal); }
+            int arah = 0;
+            if (menu_pad & PAD_RIGHT) arah = 1;
+            if (menu_pad & PAD_LEFT)  arah = -1;
+            if ((menu_pad & PAD_CROSS) || arah != 0) {
+                int ditekan_x = (menu_pad & PAD_CROSS) != 0;
+                if (set_sel == 0 && (ditekan_x || arah != 0)) { set_getar = !set_getar; bunyi(&s_pilih); }
+                else if (set_sel == 1 && (ditekan_x || arah != 0)) { set_kecepatan = !set_kecepatan; bunyi(&s_pilih); }
+                else if (set_sel == 2) {
+                    set_musik += ditekan_x ? 10 : arah * 10;
+                    if (ditekan_x && set_musik > 100) set_musik = 0;
+                    if (set_musik < 0) set_musik = 0;
+                    if (set_musik > 100) set_musik = 100;
+                    bunyi(&s_pilih);
+                }
+                else if (set_sel == 3) {
+                    set_suara += ditekan_x ? 10 : arah * 10;
+                    if (ditekan_x && set_suara > 100) set_suara = 0;
+                    if (set_suara < 0) set_suara = 0;
+                    if (set_suara > 100) set_suara = 100;
+                    bunyi(&s_pilih);
+                }
+                else if (set_sel == 4 && ditekan_x) { kembali = 1; bunyi(&s_pilih); }
             }
-            if (menu_pad & PAD_CROSS) {
-                if (set_sel == 0) set_getar = !set_getar;
-                else if (set_sel == 1) set_kecepatan = !set_kecepatan;
-                else kembali = 1;
-            }
+            if (audio_ok && musik_ch >= 0)
+                audsrv_adpcm_set_volume_and_pan(musik_ch, set_musik, 0);
             if (kembali) {
                 mc_minta_simpan = 1;
                 if (set_dari == 1) {
@@ -731,8 +820,10 @@ int main(int argc, char *argv[]) {
                 }
             }
         } else if (layar == LAYAR_ATURAN) {
+            int sel_lama = aturan_sel;
             if (menu_pad & PAD_DOWN) aturan_sel = (aturan_sel + 1) % 7;
             if (menu_pad & PAD_UP)   aturan_sel = (aturan_sel + 6) % 7;
+            if (aturan_sel != sel_lama) bunyi(&s_tok);
             int dir = 0;
             if (menu_pad & PAD_RIGHT) dir = 1;
             if (menu_pad & PAD_LEFT)  dir = -1;
@@ -744,6 +835,7 @@ int main(int argc, char *argv[]) {
                     case 3: aturan_finis = (aturan_finis + dir + 3) % 3; break;
                     case 4: aturan_mulai6 = (aturan_mulai6 + dir + 2) % 2; break;
                 }
+                bunyi(&s_pilih);
             }
             if (menu_pad & PAD_CROSS) {
                 if (aturan_sel < 5) {
@@ -754,28 +846,35 @@ int main(int argc, char *argv[]) {
                         case 3: aturan_finis = (aturan_finis + 1) % 3; break;
                         case 4: aturan_mulai6 = (aturan_mulai6 + 1) % 2; break;
                     }
+                    bunyi(&s_pilih);
                 } else if (aturan_sel == 5) {
                     // Aturan Resmi: preset resmi Hasbro
                     aturan_awal = AWAL_P1;
                     aturan_bonus6 = 0;
                     aturan_finis = FINIS_TEPAT;
                     aturan_mulai6 = 0;
+                    bunyi(&s_pilih);
                 } else {
+                    bunyi(&s_pilih);
                     mc_minta_simpan = 1;
                     reset_pertandingan(gsGlobal, frame_counter);
                     layar = LAYAR_GAME;
                 }
             }
             if (menu_pad & PAD_CIRCLE) {
+                bunyi(&s_batal);
                 mc_minta_simpan = 1;
                 ganti_tekstur(gsGlobal, judul_pixels, 640, 448);
                 layar = LAYAR_JUDUL;
             }
         } else { // LAYAR_GAME
             if (pemenang != 0) {
+                int sel_lama = menang_sel;
                 if (menu_pad & PAD_DOWN) menang_sel = (menang_sel + 1) % 3;
                 if (menu_pad & PAD_UP)   menang_sel = (menang_sel + 2) % 3;
+                if (menang_sel != sel_lama) bunyi(&s_tok);
                 if (menu_pad & PAD_CROSS) {
+                    bunyi(&s_pilih);
                     if (menang_sel == 0) {
                         menang_sel = 0;
                         reset_pertandingan(gsGlobal, frame_counter);
@@ -791,10 +890,13 @@ int main(int argc, char *argv[]) {
                     }
                 }
             } else if (jeda_aktif) {
+                int sel_lama = jeda_sel;
                 if (menu_pad & PAD_DOWN) jeda_sel = (jeda_sel + 1) % 4;
                 if (menu_pad & PAD_UP)   jeda_sel = (jeda_sel + 3) % 4;
-                if ((menu_pad & PAD_CIRCLE) || (menu_pad & PAD_START)) jeda_aktif = 0;
+                if (jeda_sel != sel_lama) bunyi(&s_tok);
+                if ((menu_pad & PAD_CIRCLE) || (menu_pad & PAD_START)) { jeda_aktif = 0; bunyi(&s_batal); }
                 else if (menu_pad & PAD_CROSS) {
+                    bunyi(&s_pilih);
                     if (jeda_sel == 0) {
                         jeda_aktif = 0;
                     } else if (jeda_sel == 1) {
@@ -815,6 +917,7 @@ int main(int argc, char *argv[]) {
                 if ((np1_g | np2_g) & PAD_START) {
                     jeda_aktif = 1;
                     jeda_sel = 0;
+                    bunyi(&s_pilih);
                 } else if (fase == F_TUNGGU || fase == F_PESAN) {
                     if (hasil_timer > 0) hasil_timer--;
                     if (fase == F_PESAN && hasil_timer == 0) {
@@ -828,6 +931,7 @@ int main(int argc, char *argv[]) {
                         dadu_timer = 0;
                         ganti_tekstur(gsGlobal, dice_pixels, 640, 448);
                         fase = F_DADU;
+                        bunyi_kocok();
                     }
                 } else if (fase == F_PEN_TUNGGU) {
                     if (edges_pemain(pen_giliran) & PAD_CROSS) {
@@ -835,6 +939,7 @@ int main(int argc, char *argv[]) {
                         wajah_skg = 1 + (rand() % 6);
                         dadu_timer = 0;
                         fase = F_DADU;
+                        bunyi_kocok();
                     }
                 } else if (fase == F_DADU) {
                     dadu_timer++;
@@ -846,8 +951,10 @@ int main(int argc, char *argv[]) {
                     }
                     int pemain_lempar = (mode_lempar == 1) ? pen_giliran : giliran;
                     if ((edges_pemain(pemain_lempar) & PAD_CROSS) || dadu_timer >= 180) {
+                        if (dadu_timer < 180) kocok_diam();
                         hasil_timer = 0;
                         fase = F_DADU_HASIL;
+                        bunyi(&s_tuk);
                     }
                 } else if (fase == F_DADU_HASIL) {
                     hasil_timer++;
@@ -863,6 +970,7 @@ int main(int argc, char *argv[]) {
                                 if (pen1 == pen2) {
                                     hasil_timer = 0;
                                     fase = F_PEN_PESAN;
+                                    bunyi(&s_seri);
                                 } else {
                                     giliran = (pen1 > pen2) ? 1 : 2;
                                     mode_lempar = 0;
@@ -885,6 +993,7 @@ int main(int argc, char *argv[]) {
                                 enam_beruntun = 0;
                                 giliran = 3 - giliran;
                                 sprintf(pesan_hasil, "3X 6 BERTURUT - GILIRAN BATAL");
+                                bunyi(&s_gagal);
                                 akhiri_tanpa_gerak(1);
                             } else if (hasil_kode == 0) {
                                 if (pos[giliran] == 0 && aturan_mulai6 && roll_skg < 6)
@@ -914,6 +1023,7 @@ int main(int argc, char *argv[]) {
                     if (langkah_timer >= jeda_langkah) {
                         langkah_timer = 0;
                         vis[giliran] += jalan_arah;
+                        bunyi(&s_langkah);
                         if (jalan_lewat100 && vis[giliran] == 100) jalan_arah = -1;
                         if (vis[giliran] == jalan_target) {
                             if (final_skg != landing_skg) {
@@ -923,8 +1033,8 @@ int main(int argc, char *argv[]) {
                                 jalur_dari_x = x1 + 17; jalur_dari_y = y1 + 17;
                                 jalur_ke_x = x2 + 17;   jalur_ke_y = y2 + 17;
                                 jalur_timer = 0;
-                                if (final_skg > landing_skg) getar_untuk(giliran, 0, 60, 12);
-                                else getar_untuk(giliran, 1, 200, 25);
+                                if (final_skg > landing_skg) { getar_untuk(giliran, 0, 60, 12); bunyi(&s_tangga); }
+                                else { getar_untuk(giliran, 1, 200, 25); bunyi(&s_ular); }
                                 fase = F_JALUR;
                             } else {
                                 finalisasi();
@@ -963,17 +1073,20 @@ int main(int argc, char *argv[]) {
                                       0, 0, 0, 0,
                                       640, 448, 640, 448,
                                       3, GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x00, 0));
-            static const char *SET_LABEL[3] = {"GETAR STIK", "KECEPATAN", "KEMBALI"};
-            for (int i = 0; i < 3; i++) {
+            static const char *SET_LABEL[5] = {"GETAR STIK", "KECEPATAN", "MUSIK", "SUARA", "KEMBALI"};
+            char nilai_buf[8];
+            for (int i = 0; i < 5; i++) {
                 draw_text(gsGlobal, 140, SET_Y[i] - 7, 2, color_teks, SET_LABEL[i]);
                 if (i == 0) draw_text(gsGlobal, 420, SET_Y[i] - 7, 2, color_kuning, set_getar ? "HIDUP" : "MATI");
                 if (i == 1) draw_text(gsGlobal, 420, SET_Y[i] - 7, 2, color_kuning, set_kecepatan ? "CEPAT" : "NORMAL");
+                if (i == 2) { sprintf(nilai_buf, "%d", set_musik); draw_text(gsGlobal, 420, SET_Y[i] - 7, 2, color_kuning, nilai_buf); }
+                if (i == 3) { sprintf(nilai_buf, "%d", set_suara); draw_text(gsGlobal, 420, SET_Y[i] - 7, 2, color_kuning, nilai_buf); }
             }
             int cy = SET_Y[set_sel];
             u64 warna_bingkai = ((frame_counter / 20) % 2 == 0)
                 ? GS_SETREG_RGBAQ(90, 170, 255, 0x00, 0)
                 : GS_SETREG_RGBAQ(170, 225, 255, 0x00, 0);
-            draw_bingkai(gsGlobal, 126, cy - 17, 514, cy + 17, warna_bingkai);
+            draw_bingkai(gsGlobal, 126, cy - 15, 514, cy + 15, warna_bingkai);
         } else if (layar == LAYAR_ATURAN) {
             gsKit_clear(gsGlobal, color_navy);
             gsKit_prim_sprite_texture(gsGlobal, &texLayar,

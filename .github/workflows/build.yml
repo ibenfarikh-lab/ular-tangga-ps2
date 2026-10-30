@@ -16,7 +16,7 @@ jobs:
     - name: Compile game
       run: |
         $PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc -D_EE -O2 -G0 -Wall -I$PS2SDK/ee/include -I$PS2SDK/common/include -I$GSKIT/include -c main.c -o main.o
-        $PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc -L$PS2SDK/ee/lib -L$GSKIT/lib -o ulartangga_slim.elf main.o -lgskit -ldmakit -lpad -lmc -lkernel -lc -lm
+        $PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc -L$PS2SDK/ee/lib -L$GSKIT/lib -o ulartangga_slim.elf main.o -lgskit -ldmakit -lpad -lmc -laudsrv -lkernel -lc -lm
 
     - name: Upload file ELF
       uses: actions/upload-artifact@v4
